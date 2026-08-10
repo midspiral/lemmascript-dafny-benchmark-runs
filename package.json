@@ -1,0 +1,12 @@
+{
+  "name": "lemmascript-dafny-benchmark-runs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reproducible Claude Code runs against lemmascript-dafny-benchmark",
+  "scripts": {
+    "list": "node run.mjs --list",
+    "plan": "node run.mjs --dry-run",
+    "run": "node run.mjs"
+  }
+}

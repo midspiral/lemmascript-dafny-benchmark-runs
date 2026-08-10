@@ -1,0 +1,62 @@
+{
+  "anthropic-opus": {
+    "description": "Claude Code with the current Anthropic Opus alias and subscription OAuth",
+    "command": "claude",
+    "model": "opus",
+    "auth": "Claude subscription OAuth; custom Anthropic and Synthetic credentials are removed",
+    "requiredEnvironment": [],
+    "unsetEnvironment": [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_MODEL",
+      "ANTHROPIC_SMALL_FAST_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "CLAUDE_CODE_SUBAGENT_MODEL",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_USE_FOUNDRY",
+      "SYNTHETIC_API_KEY"
+    ],
+    "environment": {},
+    "environmentFromSecret": {}
+  },
+  "synthetic-opus": {
+    "description": "The synclaude environment, with Opus/Sonnet and subagents routed to syn:large:vision",
+    "command": "claude",
+    "model": "opus",
+    "auth": "SYNTHETIC_API_KEY copied to ANTHROPIC_AUTH_TOKEN for the Claude process",
+    "requiredEnvironment": [
+      "SYNTHETIC_API_KEY"
+    ],
+    "unsetEnvironment": [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_MODEL",
+      "ANTHROPIC_SMALL_FAST_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "CLAUDE_CODE_SUBAGENT_MODEL",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_USE_FOUNDRY"
+    ],
+    "environment": {
+      "ANTHROPIC_BASE_URL": "https://api.synthetic.new/anthropic",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "syn:large:vision",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "syn:large:vision",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "syn:small:text",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "syn:large:vision",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+    },
+    "environmentFromSecret": {
+      "ANTHROPIC_AUTH_TOKEN": "SYNTHETIC_API_KEY"
+    },
+    "dropSecretSources": true
+  }
+}

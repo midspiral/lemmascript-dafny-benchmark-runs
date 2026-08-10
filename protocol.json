@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "excludedTaskIds": [
+    8
+  ],
+  "defaultTimeoutMinutes": 60,
+  "defaultValidationTimeoutMinutes": 45,
+  "defaultValidationTimeoutRetries": 1,
+  "defaultEffort": "high",
+  "terminationGraceSeconds": 10,
+  "agentPrompt": "Read PROMPT.md and solve the task autonomously. Work only on solution.dfy, keep iterating, and run the supplied checker before finishing. Do not stop merely after proposing a proof; either obtain PASS or leave your best honest partial proof if you are genuinely stuck."
+}
