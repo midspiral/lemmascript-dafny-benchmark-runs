@@ -13,6 +13,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -30,6 +31,14 @@ const defaultResultsRoot = path.join(projectRoot, "results");
 const protocolPath = path.join(projectRoot, "protocol.json");
 const profilesPath = path.join(projectRoot, "profiles.json");
 const validEfforts = new Set(["low", "medium", "high", "xhigh", "max"]);
+const commonAgentEnvironment = Object.freeze({
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+  DISABLE_AUTOUPDATER: "1",
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+  TSX_DISABLE_CACHE: "1",
+});
 
 function usage(exitCode = 0) {
   const out = exitCode === 0 ? console.log : console.error;
@@ -320,6 +329,14 @@ async function preflight(benchmarkRoot, metadata) {
     throw new Error(`Expected Dafny ${metadata.dafnyVersion}, found ${dafny.value}`);
   }
   if (commit.code !== 0) throw new Error(`Could not read benchmark commit: ${commit.stderr.trim()}`);
+  if (dirty.code !== 0) throw new Error(`Could not read benchmark status: ${dirty.stderr.trim()}`);
+
+  const tsxExecutable = tsx.value;
+  const tsxCli = await realpath(tsxExecutable);
+  const tsxLoader = path.join(path.dirname(tsxCli), "loader.mjs");
+  if (!(await pathExists(tsxLoader))) {
+    throw new Error(`Could not locate the tsx loader beside ${tsxCli}`);
+  }
 
   return {
     checkedAt: nowIso(),
@@ -327,6 +344,7 @@ async function preflight(benchmarkRoot, metadata) {
     benchmarkCommit: commit.stdout.trim(),
     benchmarkDirty: dirty.stdout.trim().length > 0,
     benchmarkStatus: dirty.stdout.trim().split("\n").filter(Boolean),
+    attemptCheckerCommand: shellDisplay(["node", "--import", tsxLoader, ".bench/check.ts"]),
     host: {
       hostname: hostname(),
       platform: platform(),
@@ -380,9 +398,15 @@ function buildProfileEnvironment(profile) {
     env[target] = process.env[source];
     if (profile.dropSecretSources) delete env[source];
   }
-  env.DISABLE_AUTOUPDATER = "1";
-  env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+  Object.assign(env, commonAgentEnvironment);
   return env;
+}
+
+function renderAgentPrompt(template, checkerCommand) {
+  const rendered = template.replaceAll("{{CHECK_COMMAND}}", checkerCommand);
+  const unresolved = [...rendered.matchAll(/\{\{(\w+)\}\}/g)].map(match => match[1]);
+  if (unresolved.length) throw new Error(`Unknown agent prompt placeholder(s): ${unresolved.join(", ")}`);
+  return rendered;
 }
 
 function permissionAbsolute(file) {
@@ -456,6 +480,7 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
   let initEvent;
   let resultEvent;
   let malformedEventLines = 0;
+  let lastActivity = "startup";
 
   const child = spawn(profile.command, args, {
     cwd: attemptDir,
@@ -470,6 +495,16 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
       const event = JSON.parse(line);
       if (event.type === "system" && event.subtype === "init") initEvent = event;
       if (event.type === "result") resultEvent = event;
+      if (event.type === "assistant") {
+        for (const content of event.message?.content ?? []) {
+          if (content.type !== "tool_use") continue;
+          const command = content.name === "Bash" && typeof content.input?.command === "string"
+            ? `: ${content.input.command.replace(/\s+/g, " ").slice(0, 120)}`
+            : "";
+          lastActivity = `${content.name}${command}`;
+          console.log(`    ${(elapsedMilliseconds(started) / 1000).toFixed(1)}s Claude tool ${lastActivity}`);
+        }
+      }
     } catch {
       malformedEventLines++;
     }
@@ -489,6 +524,9 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
   child.on("error", error => { spawnError = error; });
 
   let forceTimer;
+  const heartbeat = setInterval(() => {
+    console.log(`    ${(elapsedMilliseconds(started) / 1000).toFixed(1)}s Claude still running; last activity: ${lastActivity}`);
+  }, 30_000);
   const timeout = setTimeout(() => {
     timedOut = true;
     killProcessGroup(child, "SIGTERM");
@@ -499,6 +537,7 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
     child.on("close", (code, signal) => resolve({ code, signal }));
   });
   clearTimeout(timeout);
+  clearInterval(heartbeat);
   if (forceTimer) clearTimeout(forceTimer);
   if (lineBuffer) inspectLine(lineBuffer);
   stdoutFile.end();
@@ -647,7 +686,7 @@ async function executeTrial(context, task, trial, trialDir) {
     agent = await spawnClaude({
       profile,
       effort,
-      prompt: protocol.agentPrompt,
+      prompt: context.agentPrompt,
       attemptDir,
       timeoutMilliseconds: timeoutMinutes * 60_000,
       graceSeconds: protocol.terminationGraceSeconds,
@@ -807,7 +846,7 @@ async function writeSummary(runRoot) {
   return results;
 }
 
-function planObject({ options, protocol, profileName, profile, tasks, preflightResult, metadata, snapshot }) {
+function planObject({ options, protocol, profileName, profile, tasks, preflightResult, metadata, snapshot, agentPrompt }) {
   return {
     profile: profileName,
     provider: publicProfile(profile),
@@ -826,7 +865,9 @@ function planObject({ options, protocol, profileName, profile, tasks, preflightR
     toolVersions: Object.fromEntries(
       Object.entries(preflightResult.tools).map(([name, tool]) => [name, tool.value]),
     ),
-    agentPrompt: protocol.agentPrompt,
+    attemptCheckerCommand: preflightResult.attemptCheckerCommand,
+    commonAgentEnvironment,
+    agentPrompt,
     sequential: true,
   };
 }
@@ -859,6 +900,7 @@ async function main() {
   if (!profile) throw new Error(`Unknown profile ${options.profile}; choose one of: ${Object.keys(profiles).join(", ")}`);
   const tasks = selectTasks(options, metadata, excludedIds);
   const preflightResult = await preflight(options.benchmarkRoot, metadata);
+  const agentPrompt = renderAgentPrompt(protocol.agentPrompt, preflightResult.attemptCheckerCommand);
   const snapshot = {
     metadataSha256: await sha256File(metadataPath),
     promptTemplateSha256: await sha256File(path.join(options.benchmarkRoot, "PROMPT.md")),
@@ -879,6 +921,7 @@ async function main() {
     preflightResult,
     metadata,
     snapshot,
+    agentPrompt,
   });
 
   if (options.dryRun) {
@@ -921,6 +964,7 @@ async function main() {
     profileName: options.profile,
     effort: options.effort,
     protocol,
+    agentPrompt,
     timeoutMinutes: options.timeoutMinutes,
     validationTimeoutMinutes: options.validationTimeoutMinutes,
     validationTimeoutRetries: options.validationTimeoutRetries,

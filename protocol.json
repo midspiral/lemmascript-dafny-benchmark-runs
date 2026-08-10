@@ -8,5 +8,5 @@
   "defaultValidationTimeoutRetries": 1,
   "defaultEffort": "high",
   "terminationGraceSeconds": 10,
-  "agentPrompt": "Read PROMPT.md and solve the task autonomously. Work only on solution.dfy, keep iterating, and run the supplied checker before finishing. Do not stop merely after proposing a proof; either obtain PASS or leave your best honest partial proof if you are genuinely stuck."
+  "agentPrompt": "Read PROMPT.md and solve the task autonomously. Work only on solution.dfy and keep iterating. The npx checker command shown in PROMPT.md is incompatible with this strict sandbox; run `{{CHECK_COMMAND}}` instead. That is the supplied authoritative checker. When it prints PASS, stop and report completion rather than inspecting the validator. Do not stop merely after proposing a proof; either obtain PASS or leave your best honest partial proof if you are genuinely stuck."
 }

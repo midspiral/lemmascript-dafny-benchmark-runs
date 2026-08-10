@@ -41,6 +41,11 @@ Web tools, Chrome, custom slash commands, user settings, and user MCP servers
 are disabled. The main Claude Code process can still contact its configured
 model provider.
 
+The runner points the agent at tsx's loader form (`node --import ...`) because
+the `npx tsx` CLI opens an IPC socket that strict Claude Code sandboxing blocks.
+Git is given null global/system configuration inside the attempt so the copied
+validator can diff the candidate without reading the user's home directory.
+
 ## Verdicts
 
 Claude Code's exit code and final prose are not proof results. After the agent
