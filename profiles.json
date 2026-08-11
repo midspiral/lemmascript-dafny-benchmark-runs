@@ -23,8 +23,8 @@
     "environment": {},
     "environmentFromSecret": {}
   },
-  "synthetic-opus": {
-    "description": "The synclaude environment, with Opus/Sonnet and subagents routed to syn:large:vision",
+  "synthetic-kimi": {
+    "description": "The synclaude environment, with Claude Code routed to Synthetic's syn:large:vision Kimi alias",
     "command": "claude",
     "model": "opus",
     "auth": "SYNTHETIC_API_KEY copied to ANTHROPIC_AUTH_TOKEN for the Claude process",

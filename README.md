@@ -7,7 +7,7 @@ scores it with the benchmark's authoritative checker.
 
 The project does not contain credentials.
 
-For [synthetic.new](https://synthetic.new/?referral=Qi8g7zPU) (referral link), the `synthetic-opus` profile expects `SYNTHETIC_API_KEY` in the launching environment and implements this mapping:
+For [synthetic.new](https://synthetic.new/?referral=Qi8g7zPU) (referral link), the `synthetic-kimi` profile expects `SYNTHETIC_API_KEY` in the launching environment and implements this mapping:
 
 ```text
 ANTHROPIC_BASE_URL=https://api.synthetic.new/anthropic
@@ -34,8 +34,8 @@ npm run plan -- \
   --profile anthropic-opus \
   --tasks 31,19,6,24
 
-SYNTHETIC_API_KEY=... npm run plan -- \
-  --profile synthetic-opus \
+npm run plan -- \
+  --profile synthetic-kimi \
   --tasks 31,19,6,24
 ```
 
@@ -55,8 +55,8 @@ npm run run -- \
 Run the Synthetic profile:
 
 ```sh
-SYNTHETIC_API_KEY=... npm run run -- \
-  --profile synthetic-opus \
+npm run run -- \
+  --profile synthetic-kimi \
   --tasks 31,19,6,24
 ```
 
