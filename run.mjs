@@ -31,8 +31,10 @@ const defaultResultsRoot = path.join(projectRoot, "results");
 const protocolPath = path.join(projectRoot, "protocol.json");
 const profilesPath = path.join(projectRoot, "profiles.json");
 const validEfforts = new Set(["low", "medium", "high", "xhigh", "max"]);
+const allowedAgentTools = Object.freeze(["Read", "Edit", "Write", "Bash", "Task"]);
 const commonAgentEnvironment = Object.freeze({
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+  CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
   DISABLE_AUTOUPDATER: "1",
   GIT_CONFIG_GLOBAL: "/dev/null",
   GIT_CONFIG_NOSYSTEM: "1",
@@ -438,14 +440,6 @@ function claudeSettings(attemptDir) {
         allowedDomains: [],
         strictAllowlist: true,
       },
-      credentials: {
-        envVars: [
-          { name: "ANTHROPIC_API_KEY", mode: "deny" },
-          { name: "ANTHROPIC_AUTH_TOKEN", mode: "deny" },
-          { name: "CLAUDE_CODE_OAUTH_TOKEN", mode: "deny" },
-          { name: "SYNTHETIC_API_KEY", mode: "deny" },
-        ],
-      },
     },
   };
 }
@@ -461,7 +455,7 @@ function claudeArguments(profile, effort, prompt, attemptDir) {
     "--no-chrome",
     "--no-session-persistence",
     "--prompt-suggestions", "false",
-    "--permission-mode", "acceptEdits",
+    "--allowedTools", allowedAgentTools.join(","),
     "--output-format", "stream-json",
     "--verbose",
     "-p", prompt,
@@ -479,6 +473,9 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
   let lineBuffer = "";
   let initEvent;
   let resultEvent;
+  const apiRetries = [];
+  let fatalApiError;
+  let forceTimer;
   let malformedEventLines = 0;
   let lastActivity = "startup";
 
@@ -495,6 +492,23 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
       const event = JSON.parse(line);
       if (event.type === "system" && event.subtype === "init") initEvent = event;
       if (event.type === "result") resultEvent = event;
+      if (event.type === "system" && event.subtype === "api_retry") {
+        const retry = {
+          attempt: event.attempt,
+          maxRetries: event.max_retries,
+          retryDelayMilliseconds: event.retry_delay_ms,
+          errorStatus: event.error_status,
+          error: event.error,
+        };
+        apiRetries.push(retry);
+        lastActivity = `API retry ${retry.attempt}/${retry.maxRetries}: HTTP ${retry.errorStatus} ${retry.error}`;
+        console.error(`    ${(elapsedMilliseconds(started) / 1000).toFixed(1)}s Claude ${lastActivity}`);
+        if (!fatalApiError && (retry.errorStatus === 401 || retry.errorStatus === 403)) {
+          fatalApiError = retry;
+          killProcessGroup(child, "SIGTERM");
+          forceTimer = setTimeout(() => killProcessGroup(child, "SIGKILL"), graceSeconds * 1000);
+        }
+      }
       if (event.type === "assistant") {
         for (const content of event.message?.content ?? []) {
           if (content.type !== "tool_use") continue;
@@ -523,14 +537,13 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
   child.stderr.on("data", chunk => stderrFile.write(chunk));
   child.on("error", error => { spawnError = error; });
 
-  let forceTimer;
   const heartbeat = setInterval(() => {
     console.log(`    ${(elapsedMilliseconds(started) / 1000).toFixed(1)}s Claude still running; last activity: ${lastActivity}`);
   }, 30_000);
   const timeout = setTimeout(() => {
     timedOut = true;
     killProcessGroup(child, "SIGTERM");
-    forceTimer = setTimeout(() => killProcessGroup(child, "SIGKILL"), graceSeconds * 1000);
+    if (!forceTimer) forceTimer = setTimeout(() => killProcessGroup(child, "SIGKILL"), graceSeconds * 1000);
   }, timeoutMilliseconds);
 
   const closed = await new Promise(resolve => {
@@ -553,6 +566,8 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
     wallMilliseconds: Math.round(elapsedMilliseconds(started)),
     initEvent,
     resultEvent,
+    apiRetries,
+    fatalApiError,
     malformedEventLines,
   };
 }
@@ -867,6 +882,7 @@ function planObject({ options, protocol, profileName, profile, tasks, preflightR
     ),
     attemptCheckerCommand: preflightResult.attemptCheckerCommand,
     commonAgentEnvironment,
+    allowedAgentTools,
     agentPrompt,
     sequential: true,
   };
@@ -926,7 +942,7 @@ async function main() {
 
   if (options.dryRun) {
     const missing = (profile.requiredEnvironment ?? []).filter(name => !process.env[name]);
-    console.log(JSON.stringify({ ...plan, credentialsReady: missing.length === 0, missingEnvironment: missing }, null, 2));
+    console.log(JSON.stringify({ ...plan, credentialsPresent: missing.length === 0, missingEnvironment: missing }, null, 2));
     return;
   }
 
@@ -973,6 +989,8 @@ async function main() {
 
   console.log(`Run ${runId}: ${tasks.length} task(s) x ${options.repeat} trial(s), sequential`);
   console.log(`Results: ${runRoot}`);
+  let fatalProviderError;
+  runLoop:
   for (const task of tasks) {
     for (let trial = 1; trial <= options.repeat; trial++) {
       const trialDir = path.join(runRoot, "tasks", padTask(task.id), `trial-${padTrial(trial)}`);
@@ -987,8 +1005,16 @@ async function main() {
         console.log(`  preserved incomplete trial as ${path.basename(preserved)}`);
       }
       await mkdir(trialDir, { recursive: true });
-      await executeTrial(context, task, trial, trialDir);
+      const result = await executeTrial(context, task, trial, trialDir);
       await writeSummary(runRoot);
+      if (result.agent?.fatalApiError) {
+        fatalProviderError = {
+          taskId: task.id,
+          trial,
+          ...result.agent.fatalApiError,
+        };
+        break runLoop;
+      }
     }
   }
 
@@ -1000,6 +1026,22 @@ async function main() {
     ]),
   );
   const manifest = jsonFile(runManifestPath);
+  if (fatalProviderError) {
+    await writeJsonAtomic(runManifestPath, {
+      ...manifest,
+      status: "aborted",
+      abortedAt: nowIso(),
+      abortReason: "non-retryable provider authentication error",
+      fatalProviderError,
+      counts,
+    });
+    console.error(
+      `Aborted ${runId}: provider returned HTTP ${fatalProviderError.errorStatus} ` +
+      `${fatalProviderError.error}; remaining trials were not started`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   await writeJsonAtomic(runManifestPath, {
     ...manifest,
     status: "completed",

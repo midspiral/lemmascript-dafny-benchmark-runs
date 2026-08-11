@@ -35,7 +35,13 @@ Bash sandbox:
 - cannot write `.bench/`;
 - cannot make network requests;
 - cannot opt out of the sandbox; and
-- does not expose Anthropic or Synthetic credential variables to Bash.
+- does not expose Anthropic or Synthetic credential variables to Bash, hooks,
+  or stdio MCP servers. Claude Code's supported subprocess scrub preserves the
+  credential only in the parent process that calls the model provider.
+
+Subprocess scrubbing makes Claude Code require an explicit noninteractive tool
+allowlist. The runner permits `Read`, `Edit`, `Write`, `Bash`, and `Task`; the
+filesystem and network sandbox still bounds what those tools can access.
 
 Web tools, Chrome, custom slash commands, user settings, and user MCP servers
 are disabled. The main Claude Code process can still contact its configured
@@ -64,6 +70,12 @@ The automated outcomes are:
 An `auto-pass` is not yet a publishable success. The benchmark's proof-only rule
 is intentionally stronger than its automatic approximation. Every passing diff
 must receive a human review; until then, `manualProofOnlyReview` is `pending`.
+
+Claude Code normally retries API failures with exponential backoff. A 401 or 403
+cannot be repaired by retrying the same credentials, so the runner records the
+first response, terminates that agent process, and aborts the remaining batch.
+This prevents one invalid provider credential from consuming several minutes
+for every selected task.
 
 When validation reports only a Dafny timeout, the unchanged frozen candidate is
 checked again up to the configured retry count. Every attempt is retained.
