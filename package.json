@@ -7,6 +7,7 @@
   "scripts": {
     "list": "node run.mjs --list",
     "plan": "node run.mjs --dry-run",
-    "run": "node run.mjs"
+    "run": "node run.mjs",
+    "reconcile": "node run.mjs --reconcile"
   }
 }

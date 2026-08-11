@@ -87,6 +87,11 @@ task and prompt hashes, tool versions, profile, non-secret provider settings,
 requested and reported model, effort, usage metadata, and both agent and
 validation time.
 
+After a trial manifest is finalized, the runner appends an immutable summary row
+to `records/trials.csv`. The manifest is authoritative; reconciliation can
+recover a missing row but never changes an existing one. Human proof-only review
+decisions are separate append-only events in `records/reviews.csv`.
+
 The `opus` model name is intentionally an alias for the current Opus. The
 reported concrete model and Claude Code version therefore matter when comparing
 runs made at different times.

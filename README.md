@@ -77,8 +77,10 @@ Useful options:
 --validation-timeout-minutes N outer limit for each final check (default: 45)
 --validation-timeout-retries N retry final checks that hit Dafny timeouts
 --effort LEVEL                 low, medium, high, xhigh, or max
+--run-kind KIND               benchmark, smoke, or diagnostic
 --keep-attempts                retain temporary attempt directories
 --include-excluded             permit an explicitly named excluded task
+--no-ledger                    skip the repository-wide trial ledger
 ```
 
 `--all` never implies `--include-excluded`; an excluded task must be named with
@@ -97,5 +99,30 @@ Each run is stored as `results/<run-id>/`. Every task/trial directory contains:
 The runner regenerates `summary.json` and `summary.csv` after every completed
 trial. `results/` is ignored because raw transcripts can be large; copy a
 reviewed result set elsewhere before publishing it.
+
+## Append-only records
+
+Every finalized trial is appended to the tracked [`records/trials.csv`](records/trials.csv),
+including failures and infrastructure errors. A row records the exact historical
+profile name, task and trial identity, reported model, outcome, agent and
+validation wall time, token and cost metadata, benchmark commit, candidate hash,
+and the hash and relative path of its immutable `result.json`.
+
+Use `--run-kind=benchmark`, `smoke`, or `diagnostic` to keep exploratory runs
+transparent without mixing them into benchmark comparisons. The default is
+`benchmark`.
+
+The result manifest remains the source of truth. If a process is interrupted
+after writing a result but before appending its row, reconcile all finalized
+local results with:
+
+```sh
+npm run reconcile
+```
+
+Reconciliation only appends missing rows. It never rewrites existing ones, and
+it fails if a result already bound into the ledger has changed. Human proof-only
+decisions belong in the separate append-only [`records/reviews.csv`](records/reviews.csv)
+rather than mutating trial facts.
 
 See [PROTOCOL.md](PROTOCOL.md) for timing, isolation, outcome, and review rules.

@@ -24,6 +24,11 @@ import { arch, homedir, hostname, platform, release, tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  appendFinalizedTrial,
+  reconcileTrialLedger,
+  validRunKinds,
+} from "./ledger.mjs";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const defaultBenchmarkRoot = path.resolve(projectRoot, "..", "lemmascript-dafny-benchmark");
@@ -46,6 +51,7 @@ function usage(exitCode = 0) {
   const out = exitCode === 0 ? console.log : console.error;
   out(`Usage:
   node run.mjs --list [--benchmark-root PATH]
+  node run.mjs --reconcile [--results-root PATH]
   node run.mjs --dry-run --profile NAME (--tasks IDS | --all) [options]
   node run.mjs --profile NAME (--tasks IDS | --all) [options]
 
@@ -61,8 +67,10 @@ Run options:
   --validation-timeout-minutes N
   --validation-timeout-retries N
   --effort LEVEL              low, medium, high, xhigh, or max
+  --run-kind KIND             benchmark, smoke, or diagnostic (default: benchmark)
   --run-id NAME               stable run name; existing completed trials are skipped
   --keep-attempts             retain temporary attempt directories
+  --no-ledger                 do not append finalized trials to records/trials.csv
 
 Paths:
   --benchmark-root PATH       default: ${defaultBenchmarkRoot}
@@ -70,6 +78,7 @@ Paths:
 
 Other:
   --dry-run                   validate and print a plan; write nothing
+  --reconcile                 append finalized results missing from the trial ledger
   --list                      list tasks and exclusions; write nothing
   --help`);
   process.exit(exitCode);
@@ -100,9 +109,12 @@ function parseArgs(argv, protocol) {
     validationTimeoutMinutes: protocol.defaultValidationTimeoutMinutes,
     validationTimeoutRetries: protocol.defaultValidationTimeoutRetries,
     effort: protocol.defaultEffort,
+    runKind: "benchmark",
     includeExcluded: false,
     keepAttempts: false,
+    noLedger: false,
     dryRun: false,
+    reconcile: false,
     list: false,
     all: false,
   };
@@ -124,6 +136,10 @@ function parseArgs(argv, protocol) {
       options.dryRun = true;
       continue;
     }
+    if (arg === "--reconcile") {
+      options.reconcile = true;
+      continue;
+    }
     if (arg === "--list") {
       options.list = true;
       continue;
@@ -140,6 +156,10 @@ function parseArgs(argv, protocol) {
       options.keepAttempts = true;
       continue;
     }
+    if (arg === "--no-ledger") {
+      options.noLedger = true;
+      continue;
+    }
 
     const key = arg.split("=", 1)[0];
     const valued = new Set([
@@ -152,6 +172,7 @@ function parseArgs(argv, protocol) {
       "--validation-timeout-minutes",
       "--validation-timeout-retries",
       "--effort",
+      "--run-kind",
       "--run-id",
     ]);
     if (!valued.has(key)) throw new Error(`Unknown option: ${arg}`);
@@ -168,12 +189,16 @@ function parseArgs(argv, protocol) {
       case "--validation-timeout-minutes": options.validationTimeoutMinutes = parsePositiveNumber(key, value); break;
       case "--validation-timeout-retries": options.validationTimeoutRetries = parseInteger(key, value); break;
       case "--effort": options.effort = value; break;
+      case "--run-kind": options.runKind = value; break;
       case "--run-id": options.runId = value; break;
     }
   }
 
   if (!validEfforts.has(options.effort)) {
     throw new Error(`--effort must be one of ${[...validEfforts].join(", ")}`);
+  }
+  if (!validRunKinds.has(options.runKind)) {
+    throw new Error(`--run-kind must be one of ${[...validRunKinds].join(", ")}`);
   }
   if (options.runId && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(options.runId)) {
     throw new Error("--run-id may contain only letters, digits, dot, underscore, and hyphen");
@@ -199,6 +224,11 @@ function nowIso() {
 
 function generatedRunId(profile) {
   return `${nowIso().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}-${profile}`;
+}
+
+function pathIsWithin(parent, child) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 function padTask(id) {
@@ -747,6 +777,7 @@ async function executeTrial(context, task, trial, trialDir) {
       trial,
       profile: profileName,
       effort,
+      runKind: context.runKind,
       startedAt,
       endedAt: nowIso(),
       outcome,
@@ -785,6 +816,7 @@ async function executeTrial(context, task, trial, trialDir) {
       trial,
       profile: profileName,
       effort,
+      runKind: context.runKind,
       startedAt,
       endedAt: nowIso(),
       outcome: "infrastructure-error",
@@ -835,13 +867,14 @@ async function writeSummary(runRoot) {
   const results = await collectResults(runRoot);
   await writeJsonAtomic(path.join(runRoot, "summary.json"), { generatedAt: nowIso(), results });
   const headers = [
-    "run_id", "profile", "task_id", "trial", "outcome", "auto_passed", "manual_review",
+    "run_id", "profile", "run_kind", "task_id", "trial", "outcome", "auto_passed", "manual_review",
     "agent_wall_seconds", "agent_timed_out", "agent_exit_code", "reported_model",
     "validation_wall_seconds", "candidate_sha256",
   ];
   const rows = results.map(result => [
     result.runId,
     result.profile,
+    result.runKind,
     result.task.id,
     result.trial,
     result.outcome,
@@ -866,6 +899,8 @@ function planObject({ options, protocol, profileName, profile, tasks, preflightR
     profile: profileName,
     provider: publicProfile(profile),
     effort: options.effort,
+    runKind: options.runKind,
+    ledgerEnabled: !options.noLedger,
     repeat: options.repeat,
     taskIds: tasks.map(task => task.id),
     excludedTaskIds: protocol.excludedTaskIds,
@@ -902,6 +937,23 @@ async function main() {
   const protocol = jsonFile(protocolPath);
   const profiles = jsonFile(profilesPath);
   const options = parseArgs(process.argv.slice(2), protocol);
+
+  if (options.reconcile) {
+    if (options.profile || options.tasks || options.all || options.list || options.dryRun) {
+      throw new Error("--reconcile accepts only path options");
+    }
+    const reconciled = await reconcileTrialLedger({ projectRoot, resultsRoot: options.resultsRoot });
+    console.log(
+      `Trial ledger: scanned ${reconciled.scanned}, appended ${reconciled.appended}, ` +
+      `already recorded ${reconciled.alreadyRecorded}`,
+    );
+    return;
+  }
+
+  if (!options.noLedger && !pathIsWithin(projectRoot, options.resultsRoot)) {
+    throw new Error("A ledgered --results-root must be inside this repository; pass --no-ledger for external temporary results");
+  }
+
   const metadataPath = path.join(options.benchmarkRoot, "metadata.json");
   if (!(await pathExists(metadataPath))) throw new Error(`No metadata.json at ${metadataPath}`);
   const metadata = jsonFile(metadataPath);
@@ -979,6 +1031,7 @@ async function main() {
     profile,
     profileName: options.profile,
     effort: options.effort,
+    runKind: options.runKind,
     protocol,
     agentPrompt,
     timeoutMinutes: options.timeoutMinutes,
@@ -996,6 +1049,9 @@ async function main() {
       const trialDir = path.join(runRoot, "tasks", padTask(task.id), `trial-${padTrial(trial)}`);
       const resultPath = path.join(trialDir, "result.json");
       if (await pathExists(resultPath)) {
+        if (!options.noLedger) {
+          await appendFinalizedTrial({ projectRoot, resultPath, runManifestPath });
+        }
         console.log(`  task ${task.id}, trial ${trial}: already complete; skipped`);
         continue;
       }
@@ -1006,6 +1062,9 @@ async function main() {
       }
       await mkdir(trialDir, { recursive: true });
       const result = await executeTrial(context, task, trial, trialDir);
+      if (!options.noLedger) {
+        await appendFinalizedTrial({ projectRoot, resultPath, runManifestPath });
+      }
       await writeSummary(runRoot);
       if (result.agent?.fatalApiError) {
         fatalProviderError = {
