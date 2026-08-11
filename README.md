@@ -5,8 +5,9 @@ A small, dependency-free runner for Claude Code trials against the sibling
 external wall-clock time and Claude's event stream, freezes each candidate, and
 scores it with the benchmark's authoritative checker.
 
-The project does not contain credentials. The `synthetic-opus` profile expects
-`SYNTHETIC_API_KEY` in the launching environment and implements this mapping:
+The project does not contain credentials.
+
+For [synthetic.new](https://synthetic.new/?referral=Qi8g7zPU) (referral link), the `synthetic-opus` profile expects `SYNTHETIC_API_KEY` in the launching environment and implements this mapping:
 
 ```text
 ANTHROPIC_BASE_URL=https://api.synthetic.new/anthropic
