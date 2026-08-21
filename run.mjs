@@ -419,13 +419,23 @@ function publicProfile(profile) {
   };
 }
 
+function expandProfileEnvironmentValue(value) {
+  return String(value).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_placeholder, source) => {
+    const replacement = process.env[source];
+    if (!replacement) throw new Error(`Missing environment variable referenced by profile: ${source}`);
+    return replacement;
+  });
+}
+
 function buildProfileEnvironment(profile) {
   const missing = (profile.requiredEnvironment ?? []).filter(name => !process.env[name]);
   if (missing.length) throw new Error(`Missing required environment variable(s): ${missing.join(", ")}`);
 
   const env = { ...process.env };
   for (const name of profile.unsetEnvironment ?? []) delete env[name];
-  for (const [name, value] of Object.entries(profile.environment ?? {})) env[name] = String(value);
+  for (const [name, value] of Object.entries(profile.environment ?? {})) {
+    env[name] = expandProfileEnvironmentValue(value);
+  }
   for (const [target, source] of Object.entries(profile.environmentFromSecret ?? {})) {
     env[target] = process.env[source];
     if (profile.dropSecretSources) delete env[source];

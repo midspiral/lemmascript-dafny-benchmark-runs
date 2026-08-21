@@ -7,6 +7,18 @@ scores it with the benchmark's authoritative checker.
 
 The project does not contain credentials.
 
+## Available profiles
+
+| Profile | Provider and model | Required credentials |
+| --- | --- | --- |
+| `anthropic-opus` | Anthropic, current Claude Opus alias | Claude subscription OAuth |
+| `synthetic-kimi` | Synthetic, `syn:large:vision` | `SYNTHETIC_API_KEY` |
+| `qwen` | Alibaba Cloud Model Studio, `qwen3.8-27b` | `QWEN_WORKSPACE_ID` and `QWEN_API_KEY` |
+
+The `anthropic-opus` profile uses the current Claude Code subscription session.
+It removes custom Anthropic and Synthetic provider credentials before launching
+Claude Code.
+
 For [synthetic.new](https://synthetic.new/?referral=Qi8g7zPU) (referral link), the `synthetic-kimi` profile expects `SYNTHETIC_API_KEY` in the launching environment and implements this mapping:
 
 ```text
@@ -23,6 +35,24 @@ CLAUDE_CODE_ATTRIBUTION_HEADER=0
 The source key is removed from the environment passed to Claude, and both it
 and `ANTHROPIC_AUTH_TOKEN` are hidden from Bash subprocesses.
 
+For [Alibaba Cloud](https://www.alibabacloud.com/campaign/benefits?referral_code=A9274E)
+(referral link), the `qwen` profile expects `QWEN_WORKSPACE_ID` and
+`QWEN_API_KEY` in the launching environment and implements this mapping:
+
+```text
+ANTHROPIC_BASE_URL=https://${QWEN_WORKSPACE_ID}.ap-southeast-1.maas.aliyuncs.com/apps/anthropic
+ANTHROPIC_AUTH_TOKEN=$QWEN_API_KEY
+ANTHROPIC_MODEL=qwen3.8-27b
+ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8-27b
+ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-27b
+ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.6-flash
+CLAUDE_CODE_SUBAGENT_MODEL=qwen3.8-27b
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+```
+
+`QWEN_API_KEY` is removed from the environment passed to Claude after it is
+copied to `ANTHROPIC_AUTH_TOKEN`.
+
 ## Inspect and plan
 
 No installation is needed beyond the benchmark's own prerequisites.
@@ -36,6 +66,10 @@ npm run plan -- \
 
 npm run plan -- \
   --profile synthetic-kimi \
+  --tasks 31,19,6,24
+
+npm run plan -- \
+  --profile qwen \
   --tasks 31,19,6,24
 ```
 
@@ -57,6 +91,14 @@ Run the Synthetic profile:
 ```sh
 npm run run -- \
   --profile synthetic-kimi \
+  --tasks 31,19,6,24
+```
+
+Run the Qwen profile:
+
+```sh
+npm run run -- \
+  --profile qwen \
   --tasks 31,19,6,24
 ```
 

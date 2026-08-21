@@ -58,5 +58,43 @@
       "ANTHROPIC_AUTH_TOKEN": "SYNTHETIC_API_KEY"
     },
     "dropSecretSources": true
+  },
+  "qwen": {
+    "description": "Claude Code routed to Alibaba Cloud Model Studio's qwen3.8-27b Anthropic-compatible endpoint",
+    "command": "claude",
+    "model": "qwen3.8-27b",
+    "auth": "QWEN_API_KEY copied to ANTHROPIC_AUTH_TOKEN for the Claude process; QWEN_WORKSPACE_ID selects the workspace endpoint",
+    "requiredEnvironment": [
+      "QWEN_WORKSPACE_ID",
+      "QWEN_API_KEY"
+    ],
+    "unsetEnvironment": [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_MODEL",
+      "ANTHROPIC_SMALL_FAST_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "CLAUDE_CODE_SUBAGENT_MODEL",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_USE_FOUNDRY",
+      "SYNTHETIC_API_KEY"
+    ],
+    "environment": {
+      "ANTHROPIC_BASE_URL": "https://${QWEN_WORKSPACE_ID}.ap-southeast-1.maas.aliyuncs.com/apps/anthropic",
+      "ANTHROPIC_MODEL": "qwen3.8-27b",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8-27b",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-27b",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.6-flash",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "qwen3.8-27b",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+    },
+    "environmentFromSecret": {
+      "ANTHROPIC_AUTH_TOKEN": "QWEN_API_KEY"
+    },
+    "dropSecretSources": true
   }
 }
