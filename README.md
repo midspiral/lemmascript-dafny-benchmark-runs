@@ -14,6 +14,7 @@ The project does not contain credentials.
 | `anthropic-opus` | Anthropic, current Claude Opus alias | Claude subscription OAuth |
 | `synthetic-kimi` | Synthetic, `syn:large:vision` | `SYNTHETIC_API_KEY` |
 | `qwen` | Alibaba Cloud Model Studio, `qwen3.8-27b` | `QWEN_WORKSPACE_ID` and `QWEN_API_KEY` |
+| `ollama-qwen` | Local Ollama, `qwen3.8:latest` | None; Ollama must be running locally |
 
 The `anthropic-opus` profile uses the current Claude Code subscription session.
 It removes custom Anthropic and Synthetic provider credentials before launching
@@ -53,6 +54,28 @@ CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 `QWEN_API_KEY` is removed from the environment passed to Claude after it is
 copied to `ANTHROPIC_AUTH_TOKEN`.
 
+The `ollama-qwen` profile connects Claude Code to Ollama's local
+Anthropic-compatible endpoint. It expects Ollama at `http://localhost:11434`
+and the model tag `qwen3.8:latest`; no user credential is required. The profile
+implements this mapping:
+
+```text
+ANTHROPIC_AUTH_TOKEN=ollama
+ANTHROPIC_API_KEY=
+ANTHROPIC_BASE_URL=http://localhost:11434
+ANTHROPIC_MODEL=qwen3.8:latest
+ANTHROPIC_SMALL_FAST_MODEL=qwen3.8:latest
+ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8:latest
+ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8:latest
+ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8:latest
+CLAUDE_CODE_SUBAGENT_MODEL=qwen3.8:latest
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+CLAUDE_CODE_ATTRIBUTION_HEADER=0
+```
+
+The `ollama` auth token is required by the Anthropic client but ignored by the
+local Ollama server.
+
 ## Inspect and plan
 
 No installation is needed beyond the benchmark's own prerequisites.
@@ -62,15 +85,19 @@ npm run list
 
 npm run plan -- \
   --profile anthropic-opus \
-  --tasks 31,19,6,24
+  --tasks 32,19,6,24
 
 npm run plan -- \
   --profile synthetic-kimi \
-  --tasks 31,19,6,24
+  --tasks 32,19,6,24
 
 npm run plan -- \
   --profile qwen \
-  --tasks 31,19,6,24
+  --tasks 32,19,6,24
+
+npm run plan -- \
+  --profile ollama-qwen \
+  --tasks 32,19,6,24
 ```
 
 Planning is read-only: it validates task IDs and prints the exact non-secret
@@ -83,7 +110,7 @@ Run a selected pilot:
 ```sh
 npm run run -- \
   --profile anthropic-opus \
-  --tasks 31,19,6,24
+  --tasks 32,19,6,24
 ```
 
 Run the Synthetic profile:
@@ -91,7 +118,7 @@ Run the Synthetic profile:
 ```sh
 npm run run -- \
   --profile synthetic-kimi \
-  --tasks 31,19,6,24
+  --tasks 32,19,6,24
 ```
 
 Run the Qwen profile:
@@ -99,7 +126,15 @@ Run the Qwen profile:
 ```sh
 npm run run -- \
   --profile qwen \
-  --tasks 31,19,6,24
+  --tasks 32,19,6,24
+```
+
+Run the local Ollama Qwen profile:
+
+```sh
+npm run run -- \
+  --profile ollama-qwen \
+  --tasks 32,19,6,24
 ```
 
 Run every admitted task except the protocol's exclusions (currently task 8):

@@ -96,5 +96,43 @@
       "ANTHROPIC_AUTH_TOKEN": "QWEN_API_KEY"
     },
     "dropSecretSources": true
+  },
+  "ollama-qwen": {
+    "description": "Claude Code routed to the local Ollama qwen3.8:latest model through its Anthropic-compatible endpoint",
+    "command": "claude",
+    "model": "qwen3.8:latest",
+    "auth": "Local Ollama at http://localhost:11434; the required dummy auth token is set automatically",
+    "requiredEnvironment": [],
+    "unsetEnvironment": [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_MODEL",
+      "ANTHROPIC_SMALL_FAST_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "CLAUDE_CODE_SUBAGENT_MODEL",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_USE_FOUNDRY",
+      "SYNTHETIC_API_KEY",
+      "QWEN_WORKSPACE_ID",
+      "QWEN_API_KEY"
+    ],
+    "environment": {
+      "ANTHROPIC_AUTH_TOKEN": "ollama",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_BASE_URL": "http://localhost:11434",
+      "ANTHROPIC_MODEL": "qwen3.8:latest",
+      "ANTHROPIC_SMALL_FAST_MODEL": "qwen3.8:latest",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.8:latest",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8:latest",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8:latest",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "qwen3.8:latest",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+    },
+    "environmentFromSecret": {}
   }
 }

@@ -56,7 +56,7 @@ function usage(exitCode = 0) {
   node run.mjs --profile NAME (--tasks IDS | --all) [options]
 
 Selection:
-  --tasks 31,19,6,24          comma-separated task IDs, in run order
+  --tasks 32,19,6,24          comma-separated task IDs, in run order
   --all                       all tasks except protocol exclusions
   --include-excluded          permit an explicitly selected excluded task
 
