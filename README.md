@@ -13,6 +13,7 @@ The project does not contain credentials.
 | --- | --- | --- |
 | `anthropic-opus` | Anthropic, current Claude Opus alias | Claude subscription OAuth |
 | `synthetic-kimi` | Synthetic, `syn:large:vision` | `SYNTHETIC_API_KEY` |
+| `synthetic-qwen` | Synthetic, `syn:small:vision` | `SYNTHETIC_API_KEY` |
 | `qwen` | Alibaba Cloud Model Studio, `qwen3.8-27b` | `QWEN_WORKSPACE_ID` and `QWEN_API_KEY` |
 | `ollama-qwen` | Local Ollama, `qwen3.8:latest` | None; Ollama must be running locally |
 
@@ -35,6 +36,21 @@ CLAUDE_CODE_ATTRIBUTION_HEADER=0
 
 The source key is removed from the environment passed to Claude, and both it
 and `ANTHROPIC_AUTH_TOKEN` are hidden from Bash subprocesses.
+
+The `synthetic-qwen` profile uses the same endpoint and credential handling,
+but maps the main model and subagents to Synthetic's `syn:small:vision` alias,
+which currently resolves to `hf:Qwen/Qwen3.8-27B`:
+
+```text
+ANTHROPIC_BASE_URL=https://api.synthetic.new/anthropic
+ANTHROPIC_AUTH_TOKEN=$SYNTHETIC_API_KEY
+ANTHROPIC_DEFAULT_OPUS_MODEL=syn:small:vision
+ANTHROPIC_DEFAULT_SONNET_MODEL=syn:small:vision
+ANTHROPIC_DEFAULT_HAIKU_MODEL=syn:small:text
+CLAUDE_CODE_SUBAGENT_MODEL=syn:small:vision
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+CLAUDE_CODE_ATTRIBUTION_HEADER=0
+```
 
 For [Alibaba Cloud](https://www.alibabacloud.com/campaign/benefits?referral_code=A9274E)
 (referral link), the `qwen` profile expects `QWEN_WORKSPACE_ID` and
@@ -92,6 +108,10 @@ npm run plan -- \
   --tasks 32,19,6,24
 
 npm run plan -- \
+  --profile synthetic-qwen \
+  --tasks 32,19,6,24
+
+npm run plan -- \
   --profile qwen \
   --tasks 32,19,6,24
 
@@ -113,11 +133,19 @@ npm run run -- \
   --tasks 32,19,6,24
 ```
 
-Run the Synthetic profile:
+Run Kimi through Synthetic:
 
 ```sh
 npm run run -- \
   --profile synthetic-kimi \
+  --tasks 32,19,6,24
+```
+
+Run Qwen through Synthetic:
+
+```sh
+npm run run -- \
+  --profile synthetic-qwen \
   --tasks 32,19,6,24
 ```
 

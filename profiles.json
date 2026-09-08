@@ -59,6 +59,44 @@
     },
     "dropSecretSources": true
   },
+  "synthetic-qwen": {
+    "description": "The synclaude environment, with Claude Code routed to Synthetic's syn:small:vision Qwen alias",
+    "command": "claude",
+    "model": "opus",
+    "auth": "SYNTHETIC_API_KEY copied to ANTHROPIC_AUTH_TOKEN for the Claude process",
+    "requiredEnvironment": [
+      "SYNTHETIC_API_KEY"
+    ],
+    "unsetEnvironment": [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_MODEL",
+      "ANTHROPIC_SMALL_FAST_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "CLAUDE_CODE_SUBAGENT_MODEL",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_USE_FOUNDRY",
+      "QWEN_WORKSPACE_ID",
+      "QWEN_API_KEY"
+    ],
+    "environment": {
+      "ANTHROPIC_BASE_URL": "https://api.synthetic.new/anthropic",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "syn:small:vision",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "syn:small:vision",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "syn:small:text",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "syn:small:vision",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+    },
+    "environmentFromSecret": {
+      "ANTHROPIC_AUTH_TOKEN": "SYNTHETIC_API_KEY"
+    },
+    "dropSecretSources": true
+  },
   "qwen": {
     "description": "Claude Code routed to Alibaba Cloud Model Studio's qwen3.8-27b Anthropic-compatible endpoint",
     "command": "claude",
