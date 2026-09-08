@@ -169,6 +169,7 @@ Each run is stored as `results/<run-id>/`. Every task/trial directory contains:
 
 - the frozen `candidate.dfy` and rendered `PROMPT.md`;
 - raw `claude.stream.jsonl` and `claude.stderr.log`;
+- a continuously updated `usage.json`, including partial accounting on timeout;
 - parsed independent check result(s);
 - a full-context `diff.patch`;
 - `result.json`, the immutable trial manifest.
@@ -176,6 +177,49 @@ Each run is stored as `results/<run-id>/`. Every task/trial directory contains:
 The runner regenerates `summary.json` and `summary.csv` after every completed
 trial. `results/` is ignored because raw transcripts can be large; copy a
 reviewed result set elsewhere before publishing it.
+
+## Usage and cost after timeouts
+
+The runner captures detailed Claude stream events and checkpoints `usage.json`
+as usage arrives. At exit, including a timeout, that accounting is also embedded
+in `result.json` as `agent.accounting` and indexed in `summary.csv` and
+[`records/usage.csv`](records/usage.csv).
+
+Repeated message IDs are counted once. Input and cache counts come from message
+usage; output counts come from cumulative `message_delta` events. Ordinary
+assistant-message output counts are placeholders and are discarded. When a
+final result is available, its `modelUsage` totals cover all models, including
+auxiliary calls. See [Claude's cost-tracking documentation](https://code.claude.com/docs/en/agent-sdk/cost-tracking).
+
+Every report distinguishes `final` from `partial` usage. An interrupted request
+may not have emitted its output count, and internal or unforwarded subagent
+requests may be absent. Unknown counts are `null`, not zero. Cost status is
+`reported-estimate`, `estimated`, `partial-estimate`, or `unavailable`.
+`unpriced` lists any missing counts or prices; a partial estimate covers only
+the components that could be priced.
+
+[`pricing.json`](pricing.json) contains dated, provider-specific USD rates per
+million tokens for concrete model IDs. Each run snapshots its selected rates.
+The initial catalog covers Opus 5 and Synthetic's Kimi K3; add rates when a
+provider changes its models. Unknown models never inherit a moving alias's
+price. Claude's reported cost is also a client estimate; these amounts do not
+represent confirmed subscription charges. Rates come from
+[Anthropic](https://platform.claude.com/docs/en/about-claude/pricing) and
+[Synthetic](https://synthetic.new/pricing?initial=usage).
+
+Inspect saved usage without contacting a model, including older timed-out runs:
+
+```sh
+npm run usage -- results/RUN_ID/tasks/0008/trial-01
+```
+
+To save a separate report, add `--out NEW_FILE`. Existing files are never
+overwritten. Reports bind the source stream and any finalized result by SHA-256.
+They use the run's saved rates when available; older runs use the current
+catalog and record `pricingSource: "current-catalog"`. An explicit
+`--pricing-file FILE` overrides the rate catalog, using the same schema as
+`pricing.json`. Old streams without detailed usage events can recover input
+tokens, but cannot recover final output tokens or a complete cost total.
 
 ## Append-only records
 

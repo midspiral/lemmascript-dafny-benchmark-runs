@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { usageSummaryHeaders, usageSummaryValues } from "./usage.mjs";
 
 export const validRunKinds = new Set(["benchmark", "smoke", "diagnostic"]);
 
@@ -47,6 +48,10 @@ export const reviewLedgerHeaders = Object.freeze([
   "decision",
   "reviewer",
   "notes",
+]);
+
+export const usageLedgerHeaders = Object.freeze([
+  "record_id", "recorded_at", ...usageSummaryHeaders, "result_path", "result_sha256",
 ]);
 
 function csvCell(value) {
@@ -219,12 +224,16 @@ async function buildTrialRecord({ projectRoot, resultPath, runManifestPath, reco
     endedAt: result.endedAt ?? "",
     resultSha256,
     line: row.map(csvCell).join(","),
+    usageLine: result.agent?.accounting ? [
+      id, recordedAt, ...usageSummaryValues(result.agent.accounting),
+      relativeResultPath.split(path.sep).join("/"), resultSha256,
+    ].map(csvCell).join(",") : undefined,
   };
 }
 
-function readTrialIndex(contents, file) {
+function readTrialIndex(contents, file, headers = trialLedgerHeaders) {
   const lines = contents.split(/\r?\n/).filter(Boolean);
-  const expectedHeader = trialLedgerHeaders.join(",");
+  const expectedHeader = headers.join(",");
   if (lines.shift() !== expectedHeader) throw new Error(`Unexpected ledger schema in ${file}`);
   const records = new Map();
   for (const line of lines) {
@@ -243,14 +252,18 @@ async function appendRecords({ projectRoot, records }) {
   const recordsRoot = path.join(projectRoot, "records");
   const trialLedgerPath = path.join(recordsRoot, "trials.csv");
   const reviewLedgerPath = path.join(recordsRoot, "reviews.csv");
+  const usageLedgerPath = path.join(recordsRoot, "usage.csv");
 
   return withLedgerLock(recordsRoot, async () => {
     await Promise.all([
       ensureCsv(trialLedgerPath, trialLedgerHeaders),
       ensureCsv(reviewLedgerPath, reviewLedgerHeaders),
+      ensureCsv(usageLedgerPath, usageLedgerHeaders),
     ]);
     const index = readTrialIndex(await readFile(trialLedgerPath, "utf8"), trialLedgerPath);
+    const usageIndex = readTrialIndex(await readFile(usageLedgerPath, "utf8"), usageLedgerPath, usageLedgerHeaders);
     const missing = [];
+    const missingUsage = [];
 
     for (const record of records.sort((a, b) => a.endedAt.localeCompare(b.endedAt) || a.id.localeCompare(b.id))) {
       const recordedSha = index.get(record.id);
@@ -258,22 +271,33 @@ async function appendRecords({ projectRoot, records }) {
         if (recordedSha !== record.resultSha256) {
           throw new Error(`Immutable result changed after ledgering: ${record.id}`);
         }
-        continue;
+      } else {
+        index.set(record.id, record.resultSha256);
+        missing.push(record.line);
       }
-      index.set(record.id, record.resultSha256);
-      missing.push(record.line);
+      if (record.usageLine) {
+        const usageSha = usageIndex.get(record.id);
+        if (usageSha !== undefined && usageSha !== record.resultSha256) {
+          throw new Error(`Immutable usage result changed after ledgering: ${record.id}`);
+        }
+        if (usageSha === undefined) {
+          usageIndex.set(record.id, record.resultSha256);
+          missingUsage.push(record.usageLine);
+        }
+      }
     }
 
-    if (missing.length) {
-      const handle = await open(trialLedgerPath, "a");
+    for (const [file, lines] of [[trialLedgerPath, missing], [usageLedgerPath, missingUsage]]) {
+      if (!lines.length) continue;
+      const handle = await open(file, "a");
       try {
-        await handle.writeFile(`${missing.join("\n")}\n`);
+        await handle.writeFile(`${lines.join("\n")}\n`);
         await handle.sync();
       } finally {
         await handle.close();
       }
     }
-    return { appended: missing.length, alreadyRecorded: records.length - missing.length };
+    return { appended: missing.length, alreadyRecorded: records.length - missing.length, usageAppended: missingUsage.length };
   });
 }
 

@@ -29,12 +29,14 @@ import {
   reconcileTrialLedger,
   validRunKinds,
 } from "./ledger.mjs";
+import { createUsageTracker, usageSummaryHeaders, usageSummaryValues } from "./usage.mjs";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const defaultBenchmarkRoot = path.resolve(projectRoot, "..", "lemmascript-dafny-benchmark");
 const defaultResultsRoot = path.join(projectRoot, "results");
 const protocolPath = path.join(projectRoot, "protocol.json");
 const profilesPath = path.join(projectRoot, "profiles.json");
+const pricingPath = path.join(projectRoot, "pricing.json");
 const validEfforts = new Set(["low", "medium", "high", "xhigh", "max"]);
 const allowedAgentTools = Object.freeze(["Read", "Edit", "Write", "Bash", "Task"]);
 const commonAgentEnvironment = Object.freeze({
@@ -497,12 +499,13 @@ function claudeArguments(profile, effort, prompt, attemptDir) {
     "--prompt-suggestions", "false",
     "--allowedTools", allowedAgentTools.join(","),
     "--output-format", "stream-json",
+    "--include-partial-messages",
     "--verbose",
     "-p", prompt,
   ];
 }
 
-async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMilliseconds, graceSeconds, stdoutPath, stderrPath }) {
+export async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMilliseconds, graceSeconds, stdoutPath, stderrPath, pricing = null }) {
   const args = claudeArguments(profile, effort, prompt, attemptDir);
   const env = buildProfileEnvironment(profile);
   const stdoutFile = createWriteStream(stdoutPath, { flags: "wx" });
@@ -518,6 +521,18 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
   let forceTimer;
   let malformedEventLines = 0;
   let lastActivity = "startup";
+  const usageTracker = createUsageTracker({ pricing });
+  const usagePath = path.join(path.dirname(stdoutPath), "usage.json");
+  let usageWrites = Promise.resolve();
+  let usageWriteError;
+  const checkpointUsage = () => {
+    const accounting = usageTracker.snapshot();
+    usageWrites = usageWrites.then(() => writeJsonAtomic(usagePath, accounting)).catch(error => {
+      if (!usageWriteError) console.error(`    Could not checkpoint usage: ${error.message ?? error}`);
+      usageWriteError = String(error.message ?? error);
+    });
+  };
+  checkpointUsage();
 
   const child = spawn(profile.command, args, {
     cwd: attemptDir,
@@ -530,6 +545,7 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
     if (!line.trim()) return;
     try {
       const event = JSON.parse(line);
+      if (usageTracker.observe(event)) checkpointUsage();
       if (event.type === "system" && event.subtype === "init") initEvent = event;
       if (event.type === "result") resultEvent = event;
       if (event.type === "system" && event.subtype === "api_retry") {
@@ -564,9 +580,11 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
     }
   };
 
+  // Decode across chunk boundaries so Unicode in detailed stream events survives.
+  child.stdout.setEncoding("utf8");
   child.stdout.on("data", chunk => {
     stdoutFile.write(chunk);
-    lineBuffer += chunk.toString("utf8");
+    lineBuffer += chunk;
     for (;;) {
       const newline = lineBuffer.indexOf("\n");
       if (newline === -1) break;
@@ -596,6 +614,8 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
   stdoutFile.end();
   stderrFile.end();
   await Promise.all([finished(stdoutFile), finished(stderrFile)]);
+  checkpointUsage();
+  await usageWrites;
 
   return {
     ...closed,
@@ -609,6 +629,8 @@ async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMillise
     apiRetries,
     fatalApiError,
     malformedEventLines,
+    accounting: usageTracker.snapshot(),
+    usageWriteError,
   };
 }
 
@@ -747,6 +769,7 @@ async function executeTrial(context, task, trial, trialDir) {
       graceSeconds: protocol.terminationGraceSeconds,
       stdoutPath: path.join(trialDir, "claude.stream.jsonl"),
       stderrPath: path.join(trialDir, "claude.stderr.log"),
+      pricing: context.usagePricing,
     });
 
     const candidatePath = path.join(trialDir, "candidate.dfy");
@@ -808,6 +831,7 @@ async function executeTrial(context, task, trial, trialDir) {
         prompt: "PROMPT.md",
         claudeStream: "claude.stream.jsonl",
         claudeStderr: "claude.stderr.log",
+        usage: "usage.json",
         diff: "diff.patch",
       },
       temporaryAttempt: keepAttempts ? attemptDir : undefined,
@@ -880,31 +904,41 @@ async function writeSummary(runRoot) {
     "run_id", "profile", "run_kind", "task_id", "trial", "outcome", "auto_passed", "manual_review",
     "agent_wall_seconds", "agent_timed_out", "agent_exit_code", "reported_model",
     "validation_wall_seconds", "candidate_sha256",
+    ...usageSummaryHeaders,
   ];
-  const rows = results.map(result => [
-    result.runId,
-    result.profile,
-    result.runKind,
-    result.task.id,
-    result.trial,
-    result.outcome,
-    result.autoPassed,
-    result.manualProofOnlyReview,
-    result.agent?.wallMilliseconds === undefined ? undefined : (result.agent.wallMilliseconds / 1000).toFixed(3),
-    result.agent?.timedOut,
-    result.agent?.code,
-    result.agent?.initEvent?.model,
-    result.validation?.totalWallMilliseconds === undefined
-      ? undefined
-      : (result.validation.totalWallMilliseconds / 1000).toFixed(3),
-    result.task.candidateSha256,
-  ]);
+  const rows = results.map(result => {
+    let accounting = result.agent?.accounting;
+    if (!accounting && result.agent?.resultEvent) {
+      const tracker = createUsageTracker();
+      tracker.observe(result.agent.resultEvent);
+      accounting = tracker.snapshot();
+    }
+    return [
+      result.runId,
+      result.profile,
+      result.runKind,
+      result.task.id,
+      result.trial,
+      result.outcome,
+      result.autoPassed,
+      result.manualProofOnlyReview,
+      result.agent?.wallMilliseconds === undefined ? undefined : (result.agent.wallMilliseconds / 1000).toFixed(3),
+      result.agent?.timedOut,
+      result.agent?.code,
+      result.agent?.initEvent?.model,
+      result.validation?.totalWallMilliseconds === undefined
+        ? undefined
+        : (result.validation.totalWallMilliseconds / 1000).toFixed(3),
+      result.task.candidateSha256,
+      ...usageSummaryValues(accounting),
+    ];
+  });
   const csv = [headers, ...rows].map(row => row.map(csvCell).join(",")).join("\n") + "\n";
   await writeFile(path.join(runRoot, "summary.csv"), csv);
   return results;
 }
 
-function planObject({ options, protocol, profileName, profile, tasks, preflightResult, metadata, snapshot, agentPrompt }) {
+function planObject({ options, protocol, profileName, profile, tasks, preflightResult, metadata, snapshot, agentPrompt, usagePricing }) {
   return {
     profile: profileName,
     provider: publicProfile(profile),
@@ -929,6 +963,7 @@ function planObject({ options, protocol, profileName, profile, tasks, preflightR
     commonAgentEnvironment,
     allowedAgentTools,
     agentPrompt,
+    usagePricing,
     sequential: true,
   };
 }
@@ -955,7 +990,7 @@ async function main() {
     const reconciled = await reconcileTrialLedger({ projectRoot, resultsRoot: options.resultsRoot });
     console.log(
       `Trial ledger: scanned ${reconciled.scanned}, appended ${reconciled.appended}, ` +
-      `already recorded ${reconciled.alreadyRecorded}`,
+      `already recorded ${reconciled.alreadyRecorded}; usage rows appended ${reconciled.usageAppended}`,
     );
     return;
   }
@@ -977,6 +1012,7 @@ async function main() {
   const profile = profiles[options.profile];
   if (!profile) throw new Error(`Unknown profile ${options.profile}; choose one of: ${Object.keys(profiles).join(", ")}`);
   const tasks = selectTasks(options, metadata, excludedIds);
+  const usagePricing = jsonFile(pricingPath).profiles?.[options.profile] ?? null;
   const preflightResult = await preflight(options.benchmarkRoot, metadata);
   const agentPrompt = renderAgentPrompt(protocol.agentPrompt, preflightResult.attemptCheckerCommand);
   const snapshot = {
@@ -985,6 +1021,8 @@ async function main() {
     protocolSha256: await sha256File(protocolPath),
     profilesSha256: await sha256File(profilesPath),
     runnerSha256: await sha256File(fileURLToPath(import.meta.url)),
+    usageTrackerSha256: await sha256File(path.join(projectRoot, "usage.mjs")),
+    pricingSha256: await sha256File(pricingPath),
     tasks: Object.fromEntries(await Promise.all(tasks.map(async task => [
       task.id,
       await sha256File(path.join(options.benchmarkRoot, task.file)),
@@ -1000,6 +1038,7 @@ async function main() {
     metadata,
     snapshot,
     agentPrompt,
+    usagePricing,
   });
 
   if (options.dryRun) {
@@ -1048,6 +1087,7 @@ async function main() {
     validationTimeoutMinutes: options.validationTimeoutMinutes,
     validationTimeoutRetries: options.validationTimeoutRetries,
     keepAttempts: options.keepAttempts,
+    usagePricing,
   };
 
   console.log(`Run ${runId}: ${tasks.length} task(s) x ${options.repeat} trial(s), sequential`);
@@ -1120,8 +1160,10 @@ async function main() {
   console.log(`Completed ${runId}: ${JSON.stringify(counts)}`);
 }
 
-main().catch(error => {
-  console.error(`error: ${error.message ?? error}`);
-  if (process.env.DEBUG) console.error(error.stack);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch(error => {
+    console.error(`error: ${error.message ?? error}`);
+    if (process.env.DEBUG) console.error(error.stack);
+    process.exit(1);
+  });
+}

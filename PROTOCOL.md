@@ -87,6 +87,20 @@ task and prompt hashes, tool versions, profile, non-secret provider settings,
 requested and reported model, effort, usage metadata, and both agent and
 validation time.
 
+Usage is checkpointed throughout the agent run, including at termination, and
+stored in `agent.accounting`. Detailed streaming usage is deduplicated by API
+message identity; cumulative usage deltas replace earlier values. Assistant
+events' placeholder output counts are never treated as generated-token totals.
+Without final totals, coverage remains `partial`, including when every visible
+response completed, because internal requests may not be represented. The
+interrupted request's unreported usage stays unknown.
+
+Reported and calculated USD estimates are recorded separately. Calculated
+estimates use dated, concrete-model prices snapshotted in the run configuration.
+Missing usage or prices are disclosed. Neither kind of estimate is an
+authoritative bill. `records/usage.csv` stores accounting coverage and cost status
+alongside the amounts, while `records/trials.csv` retains its original schema.
+
 After a trial manifest is finalized, the runner appends an immutable summary row
 to `records/trials.csv`. The manifest is authoritative; reconciliation can
 recover a missing row but never changes an existing one. Human proof-only review
