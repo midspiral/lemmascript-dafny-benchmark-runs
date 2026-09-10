@@ -1,1 +1,2 @@
 record_id,recorded_at,usage_source,usage_coverage,usage_scope,input_tokens,output_tokens,cache_creation_input_tokens,cache_read_input_tokens,cost_usd,cost_status,reported_cost_usd,estimated_cost_usd,result_path,result_sha256
+20260910T012339Z-synthetic-kimi/0008/01,2026-09-10T02:36:59.206Z,result,final,all-models,324410,40591,151969,3248823,,unavailable,5.211042749999998,,results/20260910T012339Z-synthetic-kimi/tasks/0008/trial-01/result.json,a3cb1d7eef82050abe5c9724342acb0d94c411d75eef382266c2a9f608c21c04
