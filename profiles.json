@@ -60,10 +60,16 @@
     "dropSecretSources": true
   },
   "synthetic-qwen": {
-    "description": "The synclaude environment, with Claude Code routed to Synthetic's syn:small:vision Qwen alias",
+    "description": "Claude Code routed to Synthetic's syn:small:vision Qwen alias with local system-message compatibility fallback",
     "command": "claude",
     "model": "opus",
-    "auth": "SYNTHETIC_API_KEY copied to ANTHROPIC_AUTH_TOKEN for the Claude process",
+    "auth": "SYNTHETIC_API_KEY authenticates the upstream; Claude receives a temporary local proxy token",
+    "compatibility": {
+      "rejectMidConversationSystemForModels": [
+        "syn:small:vision",
+        "hf:Qwen/Qwen3.8-27B"
+      ]
+    },
     "requiredEnvironment": [
       "SYNTHETIC_API_KEY"
     ],

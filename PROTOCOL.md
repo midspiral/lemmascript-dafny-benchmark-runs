@@ -47,6 +47,16 @@ Web tools, Chrome, custom slash commands, user settings, and user MCP servers
 are disabled. The main Claude Code process can still contact its configured
 model provider.
 
+The `synthetic-qwen` profile uses a local proxy to reject unsupported
+mid-conversation system messages with Claude Code's recognized capability error.
+Claude Code then regenerates its reminders in the compatible message format.
+The proxy forwards accepted request bodies and response streams unchanged. The
+profile's compatibility settings are recorded in the run manifest, and each
+trial's `agent.compatibility` records local rejection and upstream request
+counts. These runs therefore use Claude Code's fallback representation of
+system reminders. The proxy retains the upstream API key; Claude receives only
+a temporary local token, subject to the same subprocess scrubbing.
+
 The runner points the agent at tsx's loader form (`node --import ...`) because
 the `npx tsx` CLI opens an IPC socket that strict Claude Code sandboxing blocks.
 Git is given null global/system configuration inside the attempt so the copied

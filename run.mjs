@@ -30,6 +30,7 @@ import {
   validRunKinds,
 } from "./ledger.mjs";
 import { createUsageTracker, usageSummaryHeaders, usageSummaryValues } from "./usage.mjs";
+import { startAnthropicProxy } from "./anthropic-proxy.mjs";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const defaultBenchmarkRoot = path.resolve(projectRoot, "..", "lemmascript-dafny-benchmark");
@@ -415,6 +416,7 @@ function publicProfile(profile) {
     model: profile.model,
     auth: profile.auth,
     environment: profile.environment,
+    compatibility: profile.compatibility,
     secretMappings: Object.fromEntries(
       Object.entries(profile.environmentFromSecret ?? {}).map(([target, source]) => [target, `<from ${source}>`]),
     ),
@@ -505,9 +507,29 @@ function claudeArguments(profile, effort, prompt, attemptDir) {
   ];
 }
 
-export async function spawnClaude({ profile, effort, prompt, attemptDir, timeoutMilliseconds, graceSeconds, stdoutPath, stderrPath, pricing = null }) {
-  const args = claudeArguments(profile, effort, prompt, attemptDir);
+export async function spawnClaude(options) {
+  const { profile } = options;
   const env = buildProfileEnvironment(profile);
+  const models = profile.compatibility?.rejectMidConversationSystemForModels;
+  if (!models?.length) return runClaude(options, env);
+  const proxy = await startAnthropicProxy({
+    upstreamBaseUrl: env.ANTHROPIC_BASE_URL,
+    upstreamAuthToken: env.ANTHROPIC_AUTH_TOKEN,
+    rejectMidConversationSystemForModels: models,
+  });
+  env.ANTHROPIC_BASE_URL = proxy.baseUrl;
+  env.ANTHROPIC_AUTH_TOKEN = proxy.authToken;
+  delete env.ANTHROPIC_API_KEY;
+  try {
+    const result = await runClaude(options, env);
+    return { ...result, compatibility: { ...profile.compatibility, ...proxy.stats } };
+  } finally {
+    await proxy.close();
+  }
+}
+
+async function runClaude({ profile, effort, prompt, attemptDir, timeoutMilliseconds, graceSeconds, stdoutPath, stderrPath, pricing = null }, env) {
+  const args = claudeArguments(profile, effort, prompt, attemptDir);
   const stdoutFile = createWriteStream(stdoutPath, { flags: "wx" });
   const stderrFile = createWriteStream(stderrPath, { flags: "wx" });
   const started = process.hrtime.bigint();
@@ -1021,6 +1043,7 @@ async function main() {
     protocolSha256: await sha256File(protocolPath),
     profilesSha256: await sha256File(profilesPath),
     runnerSha256: await sha256File(fileURLToPath(import.meta.url)),
+    anthropicProxySha256: await sha256File(path.join(projectRoot, "anthropic-proxy.mjs")),
     usageTrackerSha256: await sha256File(path.join(projectRoot, "usage.mjs")),
     pricingSha256: await sha256File(pricingPath),
     tasks: Object.fromEntries(await Promise.all(tasks.map(async task => [

@@ -37,7 +37,7 @@ CLAUDE_CODE_ATTRIBUTION_HEADER=0
 The source key is removed from the environment passed to Claude, and both it
 and `ANTHROPIC_AUTH_TOKEN` are hidden from Bash subprocesses.
 
-The `synthetic-qwen` profile uses the same endpoint and credential handling,
+The `synthetic-qwen` profile uses the same Synthetic endpoint and API key,
 but maps the main model and subagents to Synthetic's `syn:small:vision` alias,
 which currently resolves to `hf:Qwen/Qwen3.8-27B`:
 
@@ -51,6 +51,24 @@ CLAUDE_CODE_SUBAGENT_MODEL=syn:small:vision
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 CLAUDE_CODE_ATTRIBUTION_HEADER=0
 ```
+
+These variables configure the upstream connection. The runner automatically
+starts a local compatibility proxy for `synthetic-qwen`.
+Synthetic's Qwen backend currently rejects mid-conversation system messages and
+hides the error behind an empty HTTP 500 when streaming. The proxy responds to
+those requests with HTTP 400 and `capability_rejected: mid_conv_system`, which
+makes Claude Code regenerate the request using its own older reminder format.
+Accepted request bodies and streaming responses pass through unchanged. This
+uses Claude Code's [capability-error fallback](https://code.claude.com/docs/en/llm-gateway-protocol#automatic-retry-and-error-forwarding),
+verified with Claude Code 2.1.261 on September 11, 2026.
+
+The proxy binds to `127.0.0.1` on a temporary port and stops when the trial ends.
+It keeps the Synthetic key in the runner and gives Claude a temporary proxy
+token, which the subprocess scrub also hides from tools. The run configuration
+records the compatibility setting; each trial records how many requests were
+rejected locally or forwarded. The existing `--profile synthetic-qwen` command
+needs no additional setup. To retest native provider support after a fix, remove
+that profile's `compatibility` block in `profiles.json`.
 
 For [Alibaba Cloud](https://www.alibabacloud.com/campaign/benefits?referral_code=A9274E)
 (referral link), the `qwen` profile expects `QWEN_WORKSPACE_ID` and
