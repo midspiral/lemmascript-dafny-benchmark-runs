@@ -219,6 +219,11 @@ and read its instructions before solving. The selected source paths and the
 effective starting prompt are recorded in `run.json`.
 Use a name such as `--run-id opus-dafny-1` to mark the CSV's `run_id` column.
 
+Ctrl-C or `SIGTERM` stops the runner's child process groups, including Claude
+and active validation commands. They get up to 10 seconds to exit before a
+forced kill; pressing Ctrl-C again forces termination immediately. Interrupted
+trials remain unfinished, with their existing logs and temporary attempts kept.
+
 ## Results
 
 Each run is stored as `results/<run-id>/`. Every task/trial directory contains:

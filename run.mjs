@@ -284,13 +284,45 @@ function killProcessGroup(child, signal) {
   }
 }
 
+const activeChildren = new Set();
+let shutdownSignal;
+
+function spawnTracked(command, args, options) {
+  if (shutdownSignal) throw new Error(`Runner interrupted by ${shutdownSignal}`);
+  const child = spawn(command, args, options);
+  activeChildren.add(child);
+  child.once("close", () => activeChildren.delete(child));
+  return child;
+}
+
+export function installShutdownHandlers(graceSeconds = 10) {
+  let children = [];
+  const finish = () => {
+    // Keep the original groups: descendants may survive their group leader.
+    for (const child of children) killProcessGroup(child, "SIGKILL");
+    process.exit(shutdownSignal === "SIGINT" ? 130 : 143);
+  };
+  const shutdown = signal => {
+    if (shutdownSignal) return finish();
+    shutdownSignal = signal;
+    children = [...activeChildren];
+    console.error(`\n${signal}: stopping benchmark child processes (up to ${graceSeconds}s; Ctrl-C again forces exit)`);
+    const closed = children.map(child => new Promise(resolve => child.once("close", resolve)));
+    setTimeout(finish, graceSeconds * 1000);
+    for (const child of children) killProcessGroup(child, "SIGTERM");
+    void Promise.all(closed).then(finish);
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+}
+
 async function spawnCapture(command, args, options = {}) {
   const started = process.hrtime.bigint();
   let timedOut = false;
   let spawnError;
   let stdout = "";
   let stderr = "";
-  const child = spawn(command, args, {
+  const child = spawnTracked(command, args, {
     cwd: options.cwd,
     env: options.env,
     detached: platform() !== "win32",
@@ -565,7 +597,7 @@ async function runClaude({ profile, effort, prompt, attemptDir, skills = [], tim
   };
   checkpointUsage();
 
-  const child = spawn(profile.command, args, {
+  const child = spawnTracked(profile.command, args, {
     cwd: attemptDir,
     env,
     detached: platform() !== "win32",
@@ -879,6 +911,7 @@ async function executeTrial(context, task, trial, trialDir) {
     );
     return result;
   } catch (error) {
+    if (shutdownSignal) throw error;
     const result = {
       schemaVersion: 1,
       runId: context.runId,
@@ -907,7 +940,7 @@ async function executeTrial(context, task, trial, trialDir) {
     console.error(`  task ${task.id}, trial ${trial}: infrastructure-error: ${error.message ?? error}`);
     return result;
   } finally {
-    if (!keepAttempts) await rm(tempParent, { recursive: true, force: true });
+    if (!keepAttempts && !shutdownSignal) await rm(tempParent, { recursive: true, force: true });
   }
 }
 
@@ -1017,6 +1050,7 @@ function printTaskList(metadata, excludedIds) {
 
 async function main() {
   const protocol = jsonFile(protocolPath);
+  installShutdownHandlers(protocol.terminationGraceSeconds);
   const profiles = jsonFile(profilesPath);
   const options = parseArgs(process.argv.slice(2), protocol);
 
@@ -1210,6 +1244,7 @@ async function main() {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => {
+    if (shutdownSignal) return; // The shutdown handler must finish killing child groups.
     console.error(`error: ${error.message ?? error}`);
     if (process.env.DEBUG) console.error(error.stack);
     process.exit(1);
