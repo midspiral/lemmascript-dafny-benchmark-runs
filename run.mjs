@@ -453,11 +453,13 @@ function buildProfileEnvironment(profile) {
   return env;
 }
 
-function renderAgentPrompt(template, checkerCommand) {
+function renderAgentPrompt(template, checkerCommand, skills = []) {
   const rendered = template.replaceAll("{{CHECK_COMMAND}}", checkerCommand);
   const unresolved = [...rendered.matchAll(/\{\{(\w+)\}\}/g)].map(match => match[1]);
   if (unresolved.length) throw new Error(`Unknown agent prompt placeholder(s): ${unresolved.join(", ")}`);
-  return rendered;
+  if (!skills.length) return rendered;
+  const names = skills.map(skill => JSON.stringify(path.basename(skill))).join(", ");
+  return `Before solving, invoke each of these skills using the Skill tool and read its instructions: ${names}.\n\n${rendered}`;
 }
 
 function permissionAbsolute(file) {
@@ -1058,7 +1060,7 @@ async function main() {
   }
   const usagePricing = jsonFile(pricingPath).profiles?.[options.profile] ?? null;
   const preflightResult = await preflight(options.benchmarkRoot, metadata);
-  const agentPrompt = renderAgentPrompt(protocol.agentPrompt, preflightResult.attemptCheckerCommand);
+  const agentPrompt = renderAgentPrompt(protocol.agentPrompt, preflightResult.attemptCheckerCommand, options.skills);
   const snapshot = {
     metadataSha256: await sha256File(metadataPath),
     promptTemplateSha256: await sha256File(path.join(options.benchmarkRoot, "PROMPT.md")),

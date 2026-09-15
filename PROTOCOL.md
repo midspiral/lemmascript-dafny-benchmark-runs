@@ -46,8 +46,11 @@ filesystem and network sandbox still bounds what those tools can access.
 Web tools, Chrome, user settings, user MCP servers, and bundled skills are
 disabled. Project skills are disabled by default. Each `--skill PATH` copies one skill directory into
 the attempt's `.claude/skills/` before launch and enables native skills and
-the `Skill` tool. The task prompt is unchanged. The main Claude Code process
-can still contact its configured model provider.
+the `Skill` tool. The starting prompt instructs the agent to invoke each
+selected skill and read its instructions before solving. The task's
+`PROMPT.md` is unchanged, and the effective starting prompt is recorded in
+`run.json`. The main Claude Code process can still contact its configured
+model provider.
 
 The `synthetic-qwen` profile uses a local proxy to reject unsupported
 mid-conversation system messages with Claude Code's recognized capability error.

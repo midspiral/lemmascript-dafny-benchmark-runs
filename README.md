@@ -213,8 +213,10 @@ Useful options:
 Local skills live under `skills/`, starting with `skills/dafny/SKILL.md`.
 Add `--skill skills/dafny` to copy that directory into each fresh attempt as
 `.claude/skills/dafny/` and enable native skill loading. Repeat `--skill PATH`
-to supply more skills; omit it for the existing baseline. The task prompt
-stays the same, and the selected source paths are recorded in `run.json`.
+to supply more skills; omit it for the existing baseline. With skills selected,
+the runner prepends an instruction to invoke each one with the `Skill` tool
+and read its instructions before solving. The selected source paths and the
+effective starting prompt are recorded in `run.json`.
 Use a name such as `--run-id opus-dafny-1` to mark the CSV's `run_id` column.
 
 ## Results
