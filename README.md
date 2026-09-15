@@ -194,6 +194,7 @@ Useful options:
 ```text
 --benchmark-root PATH          benchmark checkout (default: sibling checkout)
 --results-root PATH            result storage (default: ./results)
+--skill PATH                   copy an individual skill directory (repeatable)
 --run-id NAME                  stable name; reuse it to resume completed trials
 --repeat N                     fresh trials per task (default: 1)
 --timeout-minutes N            Claude wall-clock limit (default: 60)
@@ -208,6 +209,13 @@ Useful options:
 
 `--all` never implies `--include-excluded`; an excluded task must be named with
 `--tasks` as well as explicitly enabled.
+
+Local skills live under `skills/`, starting with `skills/dafny/SKILL.md`.
+Add `--skill skills/dafny` to copy that directory into each fresh attempt as
+`.claude/skills/dafny/` and enable native skill loading. Repeat `--skill PATH`
+to supply more skills; omit it for the existing baseline. The task prompt
+stays the same, and the selected source paths are recorded in `run.json`.
+Use a name such as `--run-id opus-dafny-1` to mark the CSV's `run_id` column.
 
 ## Results
 

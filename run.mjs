@@ -10,6 +10,7 @@ import {
 import {
   access,
   copyFile,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -65,6 +66,7 @@ Selection:
 
 Run options:
   --profile NAME              profile from profiles.json
+  --skill PATH                copy one skill directory into the attempt (repeatable)
   --repeat N                  fresh trials per task (default: 1)
   --timeout-minutes N         agent wall-clock limit
   --validation-timeout-minutes N
@@ -107,6 +109,7 @@ function parseArgs(argv, protocol) {
   const options = {
     benchmarkRoot: defaultBenchmarkRoot,
     resultsRoot: defaultResultsRoot,
+    skills: [],
     repeat: 1,
     timeoutMinutes: protocol.defaultTimeoutMinutes,
     validationTimeoutMinutes: protocol.defaultValidationTimeoutMinutes,
@@ -169,6 +172,7 @@ function parseArgs(argv, protocol) {
       "--benchmark-root",
       "--results-root",
       "--profile",
+      "--skill",
       "--tasks",
       "--repeat",
       "--timeout-minutes",
@@ -186,6 +190,7 @@ function parseArgs(argv, protocol) {
       case "--benchmark-root": options.benchmarkRoot = path.resolve(value); break;
       case "--results-root": options.resultsRoot = path.resolve(value); break;
       case "--profile": options.profile = value; break;
+      case "--skill": options.skills.push(path.resolve(value)); break;
       case "--tasks": options.tasks = value; break;
       case "--repeat": options.repeat = parseInteger(key, value, { min: 1 }); break;
       case "--timeout-minutes": options.timeoutMinutes = parsePositiveNumber(key, value); break;
@@ -462,6 +467,8 @@ function permissionAbsolute(file) {
 function claudeSettings(attemptDir) {
   const benchDir = path.join(attemptDir, ".bench");
   return {
+    disableBundledSkills: true,
+    skillOverrides: { doctor: "off" },
     permissions: {
       deny: [
         `Read(${permissionAbsolute(path.join(homedir(), "**"))})`,
@@ -488,18 +495,18 @@ function claudeSettings(attemptDir) {
   };
 }
 
-function claudeArguments(profile, effort, prompt, attemptDir) {
+function claudeArguments(profile, effort, prompt, attemptDir, hasSkills) {
   return [
     "--model", profile.model,
     "--effort", effort,
     "--setting-sources", "project",
     "--settings", JSON.stringify(claudeSettings(attemptDir)),
     "--strict-mcp-config",
-    "--disable-slash-commands",
+    ...(hasSkills ? [] : ["--disable-slash-commands"]),
     "--no-chrome",
     "--no-session-persistence",
     "--prompt-suggestions", "false",
-    "--allowedTools", allowedAgentTools.join(","),
+    "--allowedTools", [...allowedAgentTools, ...(hasSkills ? ["Skill"] : [])].join(","),
     "--output-format", "stream-json",
     "--include-partial-messages",
     "--verbose",
@@ -528,8 +535,8 @@ export async function spawnClaude(options) {
   }
 }
 
-async function runClaude({ profile, effort, prompt, attemptDir, timeoutMilliseconds, graceSeconds, stdoutPath, stderrPath, pricing = null }, env) {
-  const args = claudeArguments(profile, effort, prompt, attemptDir);
+async function runClaude({ profile, effort, prompt, attemptDir, skills = [], timeoutMilliseconds, graceSeconds, stdoutPath, stderrPath, pricing = null }, env) {
+  const args = claudeArguments(profile, effort, prompt, attemptDir, skills.length > 0);
   const stdoutFile = createWriteStream(stdoutPath, { flags: "wx" });
   const stderrFile = createWriteStream(stderrPath, { flags: "wx" });
   const started = process.hrtime.bigint();
@@ -759,6 +766,7 @@ async function executeTrial(context, task, trial, trialDir) {
     validationTimeoutMinutes,
     validationTimeoutRetries,
     keepAttempts,
+    skills,
   } = context;
 
   const tempParent = await mkdtemp(path.join(tmpdir(), `lsdb-agent-${padTask(task.id)}-`));
@@ -775,6 +783,9 @@ async function executeTrial(context, task, trial, trialDir) {
     if (attemptCreation.code !== 0 || attemptCreation.timedOut || attemptCreation.spawnError) {
       throw new Error(`make-attempt failed: ${attemptCreation.spawnError ?? attemptCreation.stderr.trim() ?? `exit ${attemptCreation.code}`}`);
     }
+    for (const skill of skills) {
+      await cp(skill, path.join(attemptDir, ".claude", "skills", path.basename(skill)), { recursive: true });
+    }
 
     const promptPath = path.join(attemptDir, "PROMPT.md");
     const solutionPath = path.join(attemptDir, "solution.dfy");
@@ -787,6 +798,7 @@ async function executeTrial(context, task, trial, trialDir) {
       effort,
       prompt: context.agentPrompt,
       attemptDir,
+      skills,
       timeoutMilliseconds: timeoutMinutes * 60_000,
       graceSeconds: protocol.terminationGraceSeconds,
       stdoutPath: path.join(trialDir, "claude.stream.jsonl"),
@@ -974,6 +986,7 @@ function planObject({ options, protocol, profileName, profile, tasks, preflightR
     validationTimeoutMinutes: options.validationTimeoutMinutes,
     validationTimeoutRetries: options.validationTimeoutRetries,
     benchmarkRoot: options.benchmarkRoot,
+    skills: options.skills,
     benchmarkCommit: preflightResult.benchmarkCommit,
     benchmarkDirty: preflightResult.benchmarkDirty,
     benchmarkSnapshot: snapshot,
@@ -983,7 +996,7 @@ function planObject({ options, protocol, profileName, profile, tasks, preflightR
     ),
     attemptCheckerCommand: preflightResult.attemptCheckerCommand,
     commonAgentEnvironment,
-    allowedAgentTools,
+    allowedAgentTools: [...allowedAgentTools, ...(options.skills.length ? ["Skill"] : [])],
     agentPrompt,
     usagePricing,
     sequential: true,
@@ -1034,6 +1047,15 @@ async function main() {
   const profile = profiles[options.profile];
   if (!profile) throw new Error(`Unknown profile ${options.profile}; choose one of: ${Object.keys(profiles).join(", ")}`);
   const tasks = selectTasks(options, metadata, excludedIds);
+  const skillNames = new Set();
+  for (const skill of options.skills) {
+    const name = path.basename(skill);
+    if (skillNames.has(name)) throw new Error(`Duplicate skill directory name: ${name}`);
+    skillNames.add(name);
+    if (!(await stat(path.join(skill, "SKILL.md"))).isFile()) {
+      throw new Error(`Skill directory must contain SKILL.md: ${skill}`);
+    }
+  }
   const usagePricing = jsonFile(pricingPath).profiles?.[options.profile] ?? null;
   const preflightResult = await preflight(options.benchmarkRoot, metadata);
   const agentPrompt = renderAgentPrompt(protocol.agentPrompt, preflightResult.attemptCheckerCommand);
@@ -1100,6 +1122,7 @@ async function main() {
   const context = {
     runId,
     benchmarkRoot: options.benchmarkRoot,
+    skills: options.skills,
     profile,
     profileName: options.profile,
     effort: options.effort,
