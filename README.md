@@ -141,6 +141,28 @@ npm run plan -- \
 Planning is read-only: it validates task IDs and prints the exact non-secret
 configuration without creating attempts or contacting a model.
 
+To check whether Synthetic Kimi is accepting requests before starting a run:
+
+```sh
+./probe-kimi.sh
+```
+
+This uses `SYNTHETIC_API_KEY` for one tiny request, with a 30-second timeout and
+no retries or benchmark records. HTTP 200 means available now; 429 means rate
+limited; 401/403 means a credential problem. HTTP errors produce a nonzero exit
+status. A successful probe does not guarantee quota for the entire benchmark.
+
+To see the remaining quota without making an inference request:
+
+```sh
+./synthetic-quota.mjs
+```
+
+This calls Synthetic's free quota endpoint using `SYNTHETIC_API_KEY` and prints
+a table of weekly credits, five-hour requests, and the next credit
+replenishment in your local time zone. It times out after 30 seconds and exits
+with a nonzero status on errors.
+
 ## Run
 
 Run a selected pilot:
