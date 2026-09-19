@@ -217,7 +217,7 @@ async function main(argv) {
 Reads saved main-agent logs; makes no model requests. Skill defaults to dafny;
 repeat --skill to inspect multiple skills. --all scans local results, including
 unfinished attempts. --out creates a new CSV without overwriting existing files.
-records/skills.csv is appended automatically when each trial is recorded.
+records/skills.csv is appended automatically for trials supplied with --skill.
 Use npm run reconcile to backfill missing skill rows for finalized local trials.
 
 Available = advertised in init.skills. Invoked = Skill tool call observed.

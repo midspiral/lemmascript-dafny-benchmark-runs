@@ -25,9 +25,10 @@ never modifies historical manifests.
 
 ## Skill records
 
-`skills.csv` is appended automatically alongside each finalized trial, under
-the same ledger lock. It records explicit main-agent skill events for `dafny`
-(including baseline runs) and any other configured skills. Finalized rows are
+`skills.csv` is appended automatically alongside finalized trials that were
+given `--skill`, under the same ledger lock. It records explicit main-agent
+events for only those configured skills. Runs without skills leave this file
+untouched, including any baseline rows recorded previously. Finalized rows are
 unique by `(record_id, skill)` and bound to the immutable result hash. Join
 trials by `record_id`. Existing rows are never rewritten or removed, even when
 their source files are absent from the current machine.

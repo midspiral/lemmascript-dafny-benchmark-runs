@@ -219,8 +219,10 @@ async function buildTrialRecord({ projectRoot, resultPath, runManifestPath, reco
     relativeResultPath.split(path.sep).join("/"),
     resultSha256,
   ];
-  const skills = [...new Set(["dafny", ...(runManifest.configuration?.skills ?? []).map(dir => path.basename(dir))])];
-  const skillRows = await inspectTrial(path.dirname(resultPath), runManifest, skills, projectRoot);
+  const skills = [...new Set((runManifest.configuration?.skills ?? []).map(dir => path.basename(dir)))];
+  const skillRows = skills.length
+    ? await inspectTrial(path.dirname(resultPath), runManifest, skills, projectRoot)
+    : [];
   if (skillRows.some(skill => skill.result_sha256 !== resultSha256 || skill.record_id !== id)) {
     throw new Error(`Result changed while reading skill evidence: ${id}`);
   }
@@ -274,17 +276,18 @@ async function appendRecords({ projectRoot, records }) {
   const reviewLedgerPath = path.join(recordsRoot, "reviews.csv");
   const usageLedgerPath = path.join(recordsRoot, "usage.csv");
   const skillLedgerPath = path.join(recordsRoot, "skills.csv");
+  const hasSkills = records.some(record => record.skillRows.length > 0);
 
   return withLedgerLock(recordsRoot, async () => {
     await Promise.all([
       ensureCsv(trialLedgerPath, trialLedgerHeaders),
       ensureCsv(reviewLedgerPath, reviewLedgerHeaders),
       ensureCsv(usageLedgerPath, usageLedgerHeaders),
-      ensureCsv(skillLedgerPath, skillHeaders),
+      ...(hasSkills ? [ensureCsv(skillLedgerPath, skillHeaders)] : []),
     ]);
     const index = readTrialIndex(await readFile(trialLedgerPath, "utf8"), trialLedgerPath);
     const usageIndex = readTrialIndex(await readFile(usageLedgerPath, "utf8"), usageLedgerPath, usageLedgerHeaders);
-    const skillIndex = readSkillIndex(await readFile(skillLedgerPath, "utf8"));
+    const skillIndex = hasSkills ? readSkillIndex(await readFile(skillLedgerPath, "utf8")) : new Map();
     const missing = [];
     const missingUsage = [];
     const missingSkills = [];

@@ -244,7 +244,9 @@ test("legacy unfinished skill snapshots remain intact when the finalized trial i
   await mkdir(trialDir, { recursive: true });
   await mkdir(path.join(root, "records"));
   const runManifestPath = path.join(runDir, "run.json");
-  await writeFile(runManifestPath, JSON.stringify({ configuration: { runId: "legacy", runKind: "smoke" } }));
+  await writeFile(runManifestPath, JSON.stringify({ configuration: {
+    runId: "legacy", runKind: "smoke", skills: ["/skills/dafny"],
+  } }));
   const [unfinished] = await inspectRun(runDir, ["dafny"], root);
   const skillsPath = path.join(root, "records", "skills.csv");
   const original = skillsCsv([unfinished]);
@@ -259,4 +261,43 @@ test("legacy unfinished skill snapshots remain intact when the finalized trial i
   assert.equal(parseSkillsCsv(recorded).length, 2);
   assert.equal((await appendFinalizedTrial(args)).skillsAppended, 0);
   assert.equal(await readFile(skillsPath, "utf8"), recorded);
+});
+
+test("only supplied skills are recorded; baseline runs skip log inspection and leave the skill file alone", async t => {
+  const root = await mkdtemp(path.join(tmpdir(), "lsdb-skill-opt-in-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const skillsPath = path.join(root, "records", "skills.csv");
+  const trials = [];
+  for (const [runId, skills] of [["baseline", undefined], ["empty", []], ["extra", ["/skills/extra"]]]) {
+    const runDir = path.join(root, "results", runId);
+    const trialDir = path.join(runDir, "tasks", "0055", "trial-01");
+    await mkdir(trialDir, { recursive: true });
+    const runManifestPath = path.join(runDir, "run.json");
+    const resultPath = path.join(trialDir, "result.json");
+    await writeFile(runManifestPath, JSON.stringify({ configuration: { runId, runKind: "smoke", skills } }));
+    await writeFile(resultPath, JSON.stringify({ runId, task: { id: 55 }, trial: 1,
+      outcome: "auto-pass", agent: { initEvent: init(["dafny", "extra"]) } }));
+    const streamPath = path.join(trialDir, "claude.stream.jsonl");
+    if (skills?.length) {
+      await writeFile(streamPath, [init(["dafny", "extra"]), done].map(JSON.stringify).join("\n") + "\n");
+    } else {
+      // Opening this as a log would fail: baseline recording must never read it.
+      await mkdir(streamPath);
+    }
+    const args = { projectRoot: root, resultPath, runManifestPath };
+    trials.push(args);
+    const recorded = await appendFinalizedTrial(args);
+    assert.equal(recorded.appended, 1);
+    assert.equal(recorded.skillsAppended, skills?.length ? 1 : 0);
+    if (!skills?.length) await assert.rejects(readFile(skillsPath), { code: "ENOENT" });
+  }
+  const saved = await readFile(skillsPath, "utf8");
+  const rows = parseSkillsCsv(saved);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].skill, "extra");
+  assert.equal(rows[0].skill_configured, "yes");
+  assert.equal((await appendFinalizedTrial(trials[0])).skillsAppended, 0);
+  assert.equal(await readFile(skillsPath, "utf8"), saved);
+  assert.equal((await reconcileTrialLedger({ projectRoot: root, resultsRoot: path.join(root, "results") })).skillsAppended, 0);
+  assert.equal(await readFile(skillsPath, "utf8"), saved);
 });

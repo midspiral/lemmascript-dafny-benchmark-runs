@@ -290,8 +290,9 @@ incomplete logs are the counts observed so far. These observations do not assess
 whether the model followed the advice or whether it helped.
 
 Skill observations are appended automatically to `records/skills.csv` whenever
-the runner records a finalized trial. The file is created on the first write.
-It records `dafny` for baseline comparisons and any additional configured skills.
+the runner records a finalized trial that was given `--skill`. It records only
+the supplied skills. Runs without `--skill` skip skill-log inspection and do
+not create or append to the skill file. The file is created on its first write.
 Trial, usage, and skill recording share the same ledger lock. Existing rows are
 never replaced or removed, including rows whose source files live on another
 machine.
