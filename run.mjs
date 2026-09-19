@@ -1061,7 +1061,8 @@ async function main() {
     const reconciled = await reconcileTrialLedger({ projectRoot, resultsRoot: options.resultsRoot });
     console.log(
       `Trial ledger: scanned ${reconciled.scanned}, appended ${reconciled.appended}, ` +
-      `already recorded ${reconciled.alreadyRecorded}; usage rows appended ${reconciled.usageAppended}`,
+      `already recorded ${reconciled.alreadyRecorded}; usage rows appended ${reconciled.usageAppended}; ` +
+      `skill rows appended ${reconciled.skillsAppended}`,
     );
     return;
   }

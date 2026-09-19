@@ -10,6 +10,7 @@
     "run": "node run.mjs",
     "reconcile": "node run.mjs --reconcile",
     "usage": "node usage-report.mjs",
+    "skills": "node skill-report.mjs",
     "test": "node --test"
   }
 }

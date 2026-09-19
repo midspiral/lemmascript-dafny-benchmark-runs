@@ -12,6 +12,7 @@ import {
 import path from "node:path";
 import process from "node:process";
 import { usageSummaryHeaders, usageSummaryValues } from "./usage.mjs";
+import { inspectTrial, parseSkillsCsv, skillHeaders } from "./skill-report.mjs";
 
 export const validRunKinds = new Set(["benchmark", "smoke", "diagnostic"]);
 
@@ -57,7 +58,7 @@ export const usageLedgerHeaders = Object.freeze([
 function csvCell(value) {
   if (value === undefined || value === null) return "";
   const text = String(value);
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 async function pathExists(file) {
@@ -218,11 +219,17 @@ async function buildTrialRecord({ projectRoot, resultPath, runManifestPath, reco
     relativeResultPath.split(path.sep).join("/"),
     resultSha256,
   ];
+  const skills = [...new Set(["dafny", ...(runManifest.configuration?.skills ?? []).map(dir => path.basename(dir))])];
+  const skillRows = await inspectTrial(path.dirname(resultPath), runManifest, skills, projectRoot);
+  if (skillRows.some(skill => skill.result_sha256 !== resultSha256 || skill.record_id !== id)) {
+    throw new Error(`Result changed while reading skill evidence: ${id}`);
+  }
 
   return {
     id,
     endedAt: result.endedAt ?? "",
     resultSha256,
+    skillRows,
     line: row.map(csvCell).join(","),
     usageLine: result.agent?.accounting ? [
       id, recordedAt, ...usageSummaryValues(result.agent.accounting),
@@ -248,22 +255,39 @@ function readTrialIndex(contents, file, headers = trialLedgerHeaders) {
   return records;
 }
 
+function readSkillIndex(contents) {
+  const index = new Map();
+  for (const row of parseSkillsCsv(contents)) {
+    // Retain the old report's unfinished snapshots, but do not let them prevent
+    // recording the finalized trial later. Existing rows are never rewritten.
+    if (!row.result_sha256) continue;
+    const key = JSON.stringify([row.record_id, row.skill]);
+    if (index.has(key)) throw new Error(`Duplicate skill ledger record: ${row.record_id}, ${row.skill}`);
+    index.set(key, row.result_sha256);
+  }
+  return index;
+}
+
 async function appendRecords({ projectRoot, records }) {
   const recordsRoot = path.join(projectRoot, "records");
   const trialLedgerPath = path.join(recordsRoot, "trials.csv");
   const reviewLedgerPath = path.join(recordsRoot, "reviews.csv");
   const usageLedgerPath = path.join(recordsRoot, "usage.csv");
+  const skillLedgerPath = path.join(recordsRoot, "skills.csv");
 
   return withLedgerLock(recordsRoot, async () => {
     await Promise.all([
       ensureCsv(trialLedgerPath, trialLedgerHeaders),
       ensureCsv(reviewLedgerPath, reviewLedgerHeaders),
       ensureCsv(usageLedgerPath, usageLedgerHeaders),
+      ensureCsv(skillLedgerPath, skillHeaders),
     ]);
     const index = readTrialIndex(await readFile(trialLedgerPath, "utf8"), trialLedgerPath);
     const usageIndex = readTrialIndex(await readFile(usageLedgerPath, "utf8"), usageLedgerPath, usageLedgerHeaders);
+    const skillIndex = readSkillIndex(await readFile(skillLedgerPath, "utf8"));
     const missing = [];
     const missingUsage = [];
+    const missingSkills = [];
 
     for (const record of records.sort((a, b) => a.endedAt.localeCompare(b.endedAt) || a.id.localeCompare(b.id))) {
       const recordedSha = index.get(record.id);
@@ -285,9 +309,20 @@ async function appendRecords({ projectRoot, records }) {
           missingUsage.push(record.usageLine);
         }
       }
+      for (const skill of record.skillRows) {
+        const key = JSON.stringify([record.id, skill.skill]);
+        const skillSha = skillIndex.get(key);
+        if (skillSha !== undefined && skillSha !== record.resultSha256) {
+          throw new Error(`Immutable skill result changed after ledgering: ${record.id}, ${skill.skill}`);
+        }
+        if (skillSha === undefined) {
+          skillIndex.set(key, record.resultSha256);
+          missingSkills.push(skillHeaders.map(header => csvCell(skill[header])).join(","));
+        }
+      }
     }
 
-    for (const [file, lines] of [[trialLedgerPath, missing], [usageLedgerPath, missingUsage]]) {
+    for (const [file, lines] of [[trialLedgerPath, missing], [usageLedgerPath, missingUsage], [skillLedgerPath, missingSkills]]) {
       if (!lines.length) continue;
       const handle = await open(file, "a");
       try {
@@ -297,7 +332,8 @@ async function appendRecords({ projectRoot, records }) {
         await handle.close();
       }
     }
-    return { appended: missing.length, alreadyRecorded: records.length - missing.length, usageAppended: missingUsage.length };
+    return { appended: missing.length, alreadyRecorded: records.length - missing.length,
+      usageAppended: missingUsage.length, skillsAppended: missingSkills.length };
   });
 }
 

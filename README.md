@@ -263,6 +263,53 @@ The runner regenerates `summary.json` and `summary.csv` after every completed
 trial. `results/` is ignored because raw transcripts can be large; copy a
 reviewed result set elsewhere before publishing it.
 
+## Inspect skill events
+
+Inspect one run by ID or directory, without contacting a model:
+
+```sh
+npm run skills -- kimi-hard-dafny-skill-20260919-task55
+npm run skills -- results/opus-hard-dafny-skill-20260914
+```
+
+The report defaults to `dafny`. Use `--skill NAME` (repeatable) for other
+skills. It reads main-agent events and reports four separate observations:
+
+| CSV column | Evidence |
+| --- | --- |
+| `skill_available` | The startup event lists the skill in `skills`. |
+| `skill_invoked` | A completed assistant message contains a `Skill` call naming it. |
+| `skill_invocation_succeeded` | The matching tool response reports success. |
+| `skill_instructions_injected` | A synthetic user message contains the skill directory and instructions. |
+
+Values are `yes`, `no`, or `unknown`. An unobserved event is `no` only when
+the stream includes startup and final result events and has no malformed JSON;
+otherwise it is `unknown`. Availability can also be recovered from the saved
+`agent.initEvent.skills` when the stream is missing. Invocation counts in
+incomplete logs are the counts observed so far. These observations do not assess
+whether the model followed the advice or whether it helped.
+
+Skill observations are appended automatically to `records/skills.csv` whenever
+the runner records a finalized trial. The file is created on the first write.
+It records `dafny` for baseline comparisons and any additional configured skills.
+Trial, usage, and skill recording share the same ledger lock. Existing rows are
+never replaced or removed, including rows whose source files live on another
+machine.
+
+For historical local trials or recovery after an interrupted ledger write:
+
+```sh
+npm run reconcile
+```
+
+Reconciliation appends only missing rows. The CSV also records run/task/trial
+identity, profile, outcome, configured
+skills, event counts, evidence line numbers, log completeness, source paths,
+and SHA-256 hashes. `--csv` prints CSV to stdout (use `npm run --silent skills`
+when redirecting it). `--out NEW_FILE` exports a separate report and refuses to
+overwrite existing files. The inspection command can also report unfinished
+attempts; automatic recording waits for the finalized trial.
+
 ## Usage and cost after timeouts
 
 The runner captures detailed Claude stream events and checkpoints `usage.json`

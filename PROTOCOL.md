@@ -118,7 +118,12 @@ alongside the amounts, while `records/trials.csv` retains its original schema.
 
 After a trial manifest is finalized, the runner appends an immutable summary row
 to `records/trials.csv`. The manifest is authoritative; reconciliation can
-recover a missing row but never changes an existing one. Human proof-only review
+recover a missing row but never changes an existing one. The same recording
+operation appends explicit skill observations to `records/skills.csv`, using
+the shared ledger lock. Skill rows bind each finalized trial and skill to the
+result hash and saved log evidence. Reconciliation also fills missing skill
+rows; rows from other machines are retained even without their local artifacts.
+Human proof-only review
 decisions are separate append-only events in `records/reviews.csv`.
 
 The `opus` model name is intentionally an alias for the current Opus. The
