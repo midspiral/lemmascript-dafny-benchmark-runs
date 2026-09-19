@@ -67,8 +67,10 @@ It keeps the Synthetic key in the runner and gives Claude a temporary proxy
 token, which the subprocess scrub also hides from tools. The run configuration
 records the compatibility setting; each trial records how many requests were
 rejected locally or forwarded. The existing `--profile synthetic-qwen` command
-needs no additional setup. To retest native provider support after a fix, remove
-that profile's `compatibility` block in `profiles.json`.
+needs no additional setup. Run `./check-synthetic-qwen-issue.mjs` periodically to
+retest native provider support without changing the profile. See
+[SYNTHETIC_QWEN_ISSUE.md](SYNTHETIC_QWEN_ISSUE.md) for the latest result, exit
+codes, and criteria for making the proxy optional.
 
 For [Alibaba Cloud](https://www.alibabacloud.com/campaign/benefits?referral_code=A9274E)
 (referral link), the `qwen` profile expects `QWEN_WORKSPACE_ID` and
