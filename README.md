@@ -16,6 +16,7 @@ The project does not contain credentials.
 | `synthetic-qwen` | Synthetic, `syn:small:vision` | `SYNTHETIC_API_KEY` |
 | `qwen` | Alibaba Cloud Model Studio, `qwen3.8-27b` | `QWEN_WORKSPACE_ID` and `QWEN_API_KEY` |
 | `ollama-qwen` | Local Ollama, `qwen3.8:latest` | None; Ollama must be running locally |
+| `remote-vllm` | Remote vLLM, served as `llm` | `REMOTE_VLLM_BASE_URL` and `REMOTE_VLLM_API_KEY` |
 
 The `anthropic-opus` profile uses the current Claude Code subscription session.
 It removes custom Anthropic and Synthetic provider credentials before launching
@@ -112,6 +113,27 @@ CLAUDE_CODE_ATTRIBUTION_HEADER=0
 The `ollama` auth token is required by the Anthropic client but ignored by the
 local Ollama server.
 
+The `remote-vllm` profile uses any reachable vLLM Anthropic-compatible endpoint.
+Start your server with `--served-model-name llm --max-model-len 65536` alongside
+its other model-specific options. All model aliases target `llm`; the client
+assumes 65,536 context tokens and caps responses at 8,192 tokens.
+
+Connection template (base URL without `/v1`):
+
+```sh
+export REMOTE_VLLM_BASE_URL='YOUR_BASE_URL'
+export REMOTE_VLLM_API_KEY='YOUR_VLLM_API_KEY'
+
+# Optional: for endpoints protected by Cloudflare Access.
+export CF_ACCESS_CLIENT_ID='YOUR_ACCESS_CLIENT_ID'
+export CF_ACCESS_CLIENT_SECRET='YOUR_ACCESS_CLIENT_SECRET'
+export REMOTE_VLLM_CUSTOM_HEADERS="CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}
+CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+```
+
+For Qwen3.8, use `--effort medium`, `low`, or `xhigh`; it rejects the runner's
+`high` default. Match the client context setting to your actual server capacity.
+
 ## Inspect and plan
 
 No installation is needed beyond the benchmark's own prerequisites.
@@ -205,6 +227,12 @@ Run the local Ollama Qwen profile:
 npm run run -- \
   --profile ollama-qwen \
   --tasks 32,19,6,24
+```
+
+Run the remote vLLM profile:
+
+```sh
+npm run run -- --profile remote-vllm --effort medium --tasks 32
 ```
 
 Run every admitted task except the protocol's exclusions (currently task 8):

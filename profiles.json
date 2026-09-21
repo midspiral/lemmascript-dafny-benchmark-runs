@@ -18,7 +18,13 @@
       "CLAUDE_CODE_USE_BEDROCK",
       "CLAUDE_CODE_USE_VERTEX",
       "CLAUDE_CODE_USE_FOUNDRY",
-      "SYNTHETIC_API_KEY"
+      "SYNTHETIC_API_KEY",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "REMOTE_VLLM_BASE_URL",
+      "REMOTE_VLLM_API_KEY",
+      "CF_ACCESS_CLIENT_ID",
+      "CF_ACCESS_CLIENT_SECRET",
+      "REMOTE_VLLM_CUSTOM_HEADERS"
     ],
     "environment": {},
     "environmentFromSecret": {}
@@ -43,7 +49,13 @@
       "CLAUDE_CODE_SUBAGENT_MODEL",
       "CLAUDE_CODE_USE_BEDROCK",
       "CLAUDE_CODE_USE_VERTEX",
-      "CLAUDE_CODE_USE_FOUNDRY"
+      "CLAUDE_CODE_USE_FOUNDRY",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "REMOTE_VLLM_BASE_URL",
+      "REMOTE_VLLM_API_KEY",
+      "CF_ACCESS_CLIENT_ID",
+      "CF_ACCESS_CLIENT_SECRET",
+      "REMOTE_VLLM_CUSTOM_HEADERS"
     ],
     "environment": {
       "ANTHROPIC_BASE_URL": "https://api.synthetic.new/anthropic",
@@ -87,7 +99,13 @@
       "CLAUDE_CODE_USE_VERTEX",
       "CLAUDE_CODE_USE_FOUNDRY",
       "QWEN_WORKSPACE_ID",
-      "QWEN_API_KEY"
+      "QWEN_API_KEY",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "REMOTE_VLLM_BASE_URL",
+      "REMOTE_VLLM_API_KEY",
+      "CF_ACCESS_CLIENT_ID",
+      "CF_ACCESS_CLIENT_SECRET",
+      "REMOTE_VLLM_CUSTOM_HEADERS"
     ],
     "environment": {
       "ANTHROPIC_BASE_URL": "https://api.synthetic.new/anthropic",
@@ -125,7 +143,13 @@
       "CLAUDE_CODE_USE_BEDROCK",
       "CLAUDE_CODE_USE_VERTEX",
       "CLAUDE_CODE_USE_FOUNDRY",
-      "SYNTHETIC_API_KEY"
+      "SYNTHETIC_API_KEY",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "REMOTE_VLLM_BASE_URL",
+      "REMOTE_VLLM_API_KEY",
+      "CF_ACCESS_CLIENT_ID",
+      "CF_ACCESS_CLIENT_SECRET",
+      "REMOTE_VLLM_CUSTOM_HEADERS"
     ],
     "environment": {
       "ANTHROPIC_BASE_URL": "https://${QWEN_WORKSPACE_ID}.ap-southeast-1.maas.aliyuncs.com/apps/anthropic",
@@ -162,7 +186,13 @@
       "CLAUDE_CODE_USE_FOUNDRY",
       "SYNTHETIC_API_KEY",
       "QWEN_WORKSPACE_ID",
-      "QWEN_API_KEY"
+      "QWEN_API_KEY",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "REMOTE_VLLM_BASE_URL",
+      "REMOTE_VLLM_API_KEY",
+      "CF_ACCESS_CLIENT_ID",
+      "CF_ACCESS_CLIENT_SECRET",
+      "REMOTE_VLLM_CUSTOM_HEADERS"
     ],
     "environment": {
       "ANTHROPIC_AUTH_TOKEN": "ollama",
@@ -178,5 +208,58 @@
       "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
     },
     "environmentFromSecret": {}
+  },
+  "remote-vllm": {
+    "description": "Claude Code using a remote vLLM server with the served model alias llm",
+    "command": "claude",
+    "model": "llm",
+    "auth": "REMOTE_VLLM_API_KEY authenticates vLLM; optional REMOTE_VLLM_CUSTOM_HEADERS authenticate a gateway",
+    "requiredEnvironment": [
+      "REMOTE_VLLM_BASE_URL",
+      "REMOTE_VLLM_API_KEY"
+    ],
+    "unsetEnvironment": [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_MODEL",
+      "ANTHROPIC_SMALL_FAST_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "CLAUDE_CODE_SUBAGENT_MODEL",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_USE_FOUNDRY",
+      "SYNTHETIC_API_KEY",
+      "QWEN_WORKSPACE_ID",
+      "QWEN_API_KEY",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "REMOTE_VLLM_BASE_URL",
+      "REMOTE_VLLM_API_KEY",
+      "CF_ACCESS_CLIENT_ID",
+      "CF_ACCESS_CLIENT_SECRET",
+      "REMOTE_VLLM_CUSTOM_HEADERS"
+    ],
+    "environment": {
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_BASE_URL": "${REMOTE_VLLM_BASE_URL}",
+      "ANTHROPIC_MODEL": "llm",
+      "ANTHROPIC_SMALL_FAST_MODEL": "llm",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "llm",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "llm",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "llm",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "llm",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+      "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "65536",
+      "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
+      "API_TIMEOUT_MS": "1200000"
+    },
+    "environmentFromSecret": {
+      "ANTHROPIC_AUTH_TOKEN": "REMOTE_VLLM_API_KEY",
+      "ANTHROPIC_CUSTOM_HEADERS": "REMOTE_VLLM_CUSTOM_HEADERS"
+    },
+    "dropSecretSources": true
   }
 }

@@ -468,7 +468,7 @@ function expandProfileEnvironmentValue(value) {
   });
 }
 
-function buildProfileEnvironment(profile) {
+export function buildProfileEnvironment(profile) {
   const missing = (profile.requiredEnvironment ?? []).filter(name => !process.env[name]);
   if (missing.length) throw new Error(`Missing required environment variable(s): ${missing.join(", ")}`);
 
