@@ -11,6 +11,7 @@
     "reconcile": "node run.mjs --reconcile",
     "usage": "node usage-report.mjs",
     "skills": "node skill-report.mjs",
+    "locs": "node locs-report.mjs",
     "test": "node --test"
   }
 }

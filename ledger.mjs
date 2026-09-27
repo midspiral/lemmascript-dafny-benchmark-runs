@@ -13,6 +13,7 @@ import path from "node:path";
 import process from "node:process";
 import { usageSummaryHeaders, usageSummaryValues } from "./usage.mjs";
 import { inspectTrial, parseSkillsCsv, skillHeaders } from "./skill-report.mjs";
+import { locHeaders, locKey, measureLocs, parseCsv, readLocIndex } from "./locs.mjs";
 
 export const validRunKinds = new Set(["benchmark", "smoke", "diagnostic"]);
 
@@ -195,6 +196,8 @@ async function buildTrialRecord({ projectRoot, resultPath, runManifestPath, reco
   const check = finalValidationResult(result);
   const usage = result.agent?.resultEvent?.usage;
   const resultSha256 = sha256Bytes(resultBytes);
+  const locRow = await measureLocs({ result, resultPath, resultSha256, recordedAt,
+    relativeResultPath: relativeResultPath.split(path.sep).join("/") });
   const row = [
     id,
     recordedAt,
@@ -232,6 +235,7 @@ async function buildTrialRecord({ projectRoot, resultPath, runManifestPath, reco
     endedAt: result.endedAt ?? "",
     resultSha256,
     skillRows,
+    locRow,
     line: row.map(csvCell).join(","),
     usageLine: result.agent?.accounting ? [
       id, recordedAt, ...usageSummaryValues(result.agent.accounting),
@@ -270,12 +274,38 @@ function readSkillIndex(contents) {
   return index;
 }
 
+function stageLocRow(index, row, missing) {
+  const key = locKey(row), previous = index.get(key);
+  if (previous) {
+    if (previous.result_sha256 !== row.result_sha256) throw new Error(`Immutable LOC result changed after ledgering: ${row.record_id}`);
+    if (previous.status === "measured") {
+      if (row.status === "measured" && ["added_dafny_lines", "candidate_sha256", "task_sha256"].some(field => previous[field] !== row[field])) {
+        throw new Error(`LOC measurement changed for unchanged result: ${row.record_id}`);
+      }
+      return;
+    }
+    if (row.status !== "measured") return;
+  }
+  index.set(key, row);
+  missing.push(locHeaders.map(header => csvCell(row[header])).join(","));
+}
+
+async function appendLines(file, lines) {
+  if (!lines.length) return;
+  const handle = await open(file, "a");
+  try {
+    await handle.writeFile(`${lines.join("\n")}\n`);
+    await handle.sync();
+  } finally { await handle.close(); }
+}
+
 async function appendRecords({ projectRoot, records }) {
   const recordsRoot = path.join(projectRoot, "records");
   const trialLedgerPath = path.join(recordsRoot, "trials.csv");
   const reviewLedgerPath = path.join(recordsRoot, "reviews.csv");
   const usageLedgerPath = path.join(recordsRoot, "usage.csv");
   const skillLedgerPath = path.join(recordsRoot, "skills.csv");
+  const locLedgerPath = path.join(recordsRoot, "locs.csv");
   const hasSkills = records.some(record => record.skillRows.length > 0);
 
   return withLedgerLock(recordsRoot, async () => {
@@ -283,14 +313,17 @@ async function appendRecords({ projectRoot, records }) {
       ensureCsv(trialLedgerPath, trialLedgerHeaders),
       ensureCsv(reviewLedgerPath, reviewLedgerHeaders),
       ensureCsv(usageLedgerPath, usageLedgerHeaders),
+      ensureCsv(locLedgerPath, locHeaders),
       ...(hasSkills ? [ensureCsv(skillLedgerPath, skillHeaders)] : []),
     ]);
     const index = readTrialIndex(await readFile(trialLedgerPath, "utf8"), trialLedgerPath);
     const usageIndex = readTrialIndex(await readFile(usageLedgerPath, "utf8"), usageLedgerPath, usageLedgerHeaders);
     const skillIndex = hasSkills ? readSkillIndex(await readFile(skillLedgerPath, "utf8")) : new Map();
+    const locIndex = readLocIndex(await readFile(locLedgerPath, "utf8"));
     const missing = [];
     const missingUsage = [];
     const missingSkills = [];
+    const missingLocs = [];
 
     for (const record of records.sort((a, b) => a.endedAt.localeCompare(b.endedAt) || a.id.localeCompare(b.id))) {
       const recordedSha = index.get(record.id);
@@ -302,6 +335,7 @@ async function appendRecords({ projectRoot, records }) {
         index.set(record.id, record.resultSha256);
         missing.push(record.line);
       }
+      stageLocRow(locIndex, record.locRow, missingLocs);
       if (record.usageLine) {
         const usageSha = usageIndex.get(record.id);
         if (usageSha !== undefined && usageSha !== record.resultSha256) {
@@ -325,18 +359,11 @@ async function appendRecords({ projectRoot, records }) {
       }
     }
 
-    for (const [file, lines] of [[trialLedgerPath, missing], [usageLedgerPath, missingUsage], [skillLedgerPath, missingSkills]]) {
-      if (!lines.length) continue;
-      const handle = await open(file, "a");
-      try {
-        await handle.writeFile(`${lines.join("\n")}\n`);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
+    for (const [file, lines] of [[trialLedgerPath, missing], [usageLedgerPath, missingUsage], [skillLedgerPath, missingSkills], [locLedgerPath, missingLocs]]) {
+      await appendLines(file, lines);
     }
     return { appended: missing.length, alreadyRecorded: records.length - missing.length,
-      usageAppended: missingUsage.length, skillsAppended: missingSkills.length };
+      usageAppended: missingUsage.length, skillsAppended: missingSkills.length, locsAppended: missingLocs.length };
   });
 }
 
@@ -379,4 +406,40 @@ export async function reconcileTrialLedger({ projectRoot, resultsRoot }) {
     scanned: records.length,
     ...(await appendRecords({ projectRoot, records })),
   };
+}
+
+/** Backfill only published trial identities; do not revive deliberately removed results. */
+export async function backfillLocs({ projectRoot, resultsRoot = path.join(projectRoot, "results"), preContextRoot = path.join(projectRoot, "results-pre-context") }) {
+  const recordsRoot = path.join(projectRoot, "records");
+  const rows = [], seen = new Set(), recordedAt = new Date().toISOString();
+  for (const [name, root] of [["trials.csv", resultsRoot], ["trials-pre-context.csv", preContextRoot]]) {
+    const file = path.join(recordsRoot, name);
+    if (!(await pathExists(file))) continue;
+    for (const trial of parseCsv(await readFile(file, "utf8"), trialLedgerHeaders)) {
+      if (seen.has(trial.record_id)) throw new Error(`Duplicate recorded trial: ${trial.record_id}`);
+      seen.add(trial.record_id);
+      const suffix = trial.result_path.replace(/^results[^/]*\//, "");
+      const resultPath = path.resolve(root, suffix);
+      if (!resultPath.startsWith(path.resolve(root) + path.sep)) throw new Error(`Invalid result path: ${trial.record_id}`);
+      if (!(await pathExists(resultPath))) {
+        const row = await measureLocs({ result: { runId: trial.run_id, task: { id: Number(trial.task_id), candidateSha256: trial.candidate_sha256 }, trial: Number(trial.trial) },
+          resultPath, resultSha256: trial.result_sha256, relativeResultPath: trial.result_path, recordedAt });
+        rows.push({ ...row, reason: "missing-result" });
+        continue;
+      }
+      const bytes = await readFile(resultPath), result = JSON.parse(bytes.toString("utf8"));
+      if (sha256Bytes(bytes) !== trial.result_sha256) throw new Error(`Result hash mismatch: ${trial.record_id}`);
+      if (recordId(result) !== trial.record_id || (result.task.candidateSha256 ?? "") !== trial.candidate_sha256) throw new Error(`Trial ledger disagrees with manifest: ${trial.record_id}`);
+      rows.push(await measureLocs({ result, resultPath, resultSha256: trial.result_sha256, relativeResultPath: trial.result_path, recordedAt }));
+    }
+  }
+  return withLedgerLock(recordsRoot, async () => {
+    const file = path.join(recordsRoot, "locs.csv");
+    await ensureCsv(file, locHeaders);
+    const index = readLocIndex(await readFile(file, "utf8")), missing = [];
+    for (const row of rows) stageLocRow(index, row, missing);
+    await appendLines(file, missing);
+    return { scanned: rows.length, appended: missing.length,
+      measured: rows.filter(row => index.get(locKey(row)).status === "measured").length };
+  });
 }

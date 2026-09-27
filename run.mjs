@@ -1065,7 +1065,7 @@ async function main() {
     console.log(
       `Trial ledger: scanned ${reconciled.scanned}, appended ${reconciled.appended}, ` +
       `already recorded ${reconciled.alreadyRecorded}; usage rows appended ${reconciled.usageAppended}; ` +
-      `skill rows appended ${reconciled.skillsAppended}`,
+      `skill rows appended ${reconciled.skillsAppended}; LOC rows appended ${reconciled.locsAppended}`,
     );
     return;
   }
