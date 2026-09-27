@@ -29,7 +29,23 @@ Remote files absent locally are retained. Re-run the command after an interrupte
 upload; unchanged content is skipped. Uploads are explicit, separate from running
 benchmarks, and use a pinned Hugging Face client installed by `uv`.
 
-To download an archive into a separate directory:
+To restore raw results into a fresh Git clone, run these commands from the clone's
+root directory. A login with read access to the private dataset is sufficient:
+
+```sh
+uvx --from huggingface_hub==2.0.0 hf auth login
+uvx --from huggingface_hub==2.0.0 hf download \
+  midspiral/lemmascript-dafny-benchmark-runs-results \
+  --repo-type dataset --local-dir . \
+  --include 'results/**' --include 'results-pre-context/**'
+```
+
+Git provides the scripts, protocol, and published ledgers; this restores the two
+raw results directories in their original locations. Re-run the download command
+to fetch later uploads.
+
+To download the entire archive, including its copies of the ledgers and protocol,
+into a separate directory:
 
 ```sh
 uvx --from huggingface_hub hf download \
