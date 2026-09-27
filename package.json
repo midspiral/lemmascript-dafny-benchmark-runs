@@ -12,6 +12,8 @@
     "usage": "node usage-report.mjs",
     "skills": "node skill-report.mjs",
     "locs": "node locs-report.mjs",
+    "results:push": "uv run --script push-results.py",
+    "test:results": "python3 -B -m unittest discover -s test -p '*_test.py'",
     "test": "node --test"
   }
 }
