@@ -66,6 +66,7 @@ Selection:
 
 Run options:
   --profile NAME              profile from profiles.json
+  --model NAME                override the profile's main model
   --skill PATH                copy one skill directory into the attempt (repeatable)
   --repeat N                  fresh trials per task (default: 1)
   --timeout-minutes N         agent wall-clock limit
@@ -172,6 +173,7 @@ function parseArgs(argv, protocol) {
       "--benchmark-root",
       "--results-root",
       "--profile",
+      "--model",
       "--skill",
       "--tasks",
       "--repeat",
@@ -190,6 +192,7 @@ function parseArgs(argv, protocol) {
       case "--benchmark-root": options.benchmarkRoot = path.resolve(value); break;
       case "--results-root": options.resultsRoot = path.resolve(value); break;
       case "--profile": options.profile = value; break;
+      case "--model": options.model = value; break;
       case "--skill": options.skills.push(path.resolve(value)); break;
       case "--tasks": options.tasks = value; break;
       case "--repeat": options.repeat = parseInteger(key, value, { min: 1 }); break;
@@ -1083,6 +1086,7 @@ async function main() {
   if (!options.profile) throw new Error(`--profile is required; choose one of: ${Object.keys(profiles).join(", ")}`);
   const profile = profiles[options.profile];
   if (!profile) throw new Error(`Unknown profile ${options.profile}; choose one of: ${Object.keys(profiles).join(", ")}`);
+  if (options.model !== undefined) profile.model = options.model;
   const tasks = selectTasks(options, metadata, excludedIds);
   const skillNames = new Set();
   for (const skill of options.skills) {
