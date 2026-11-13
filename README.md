@@ -5,6 +5,8 @@ A small, dependency-free runner for Claude Code trials against the sibling
 external wall-clock time and Claude's event stream, freezes each candidate, and
 scores it with the benchmark's authoritative checker.
 
+[HuggingFace dataset of some runs](https://huggingface.co/datasets/midspiral/lemmascript-dafny-benchmark-runs-results).
+
 The project does not contain credentials.
 
 ## Available profiles
